@@ -1,0 +1,18 @@
+# Core numerical computing
+numpy>=1.23
+
+# Computer vision (video & image processing)
+opencv-python>=4.8
+tqdm>=4.66
+numpy
+opencv-python
+
+# Standard Python libraries (included with Python)
+# os
+# ssl
+# shutil
+# random
+# urllib
+# subprocess
+# pathlib
+# typing

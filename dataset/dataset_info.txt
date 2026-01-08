@@ -1,0 +1,6 @@
+UCF-101 Manual Subset
+Classes: class_1_Basketball, class_2_Biking, class_3_WalkingWithDog
+Video formats: MP4 / AVI / MOV
+Duration: 5–60 seconds
+Resolution: ≥240p
+Multi-class classification (≤5 classes)

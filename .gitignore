@@ -33,6 +33,7 @@ Thumbs.db
 # Large Dataset (DO NOT COMMIT)
 # =========================
 UCF-101/
+dataset/UCF101.rar
 
 # =========================
 # Results / Outputs

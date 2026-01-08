@@ -42,6 +42,7 @@ random.seed(SEED)
 # HELPERS
 # =========================
 
+
 def log(msg):
     print(msg, flush=True)
 
@@ -73,7 +74,8 @@ def create_class_folders():
 def list_videos(folder: Path):
     videos = []
     for ext in VIDEO_EXTENSIONS:
-        videos.extend(folder.glob(f"*{ext}"))
+        videos.extend(folder.glob(f"*{ext.lower()}"))
+        videos.extend(folder.glob(f"*{ext.upper()}"))
     return videos
 
 

@@ -4,11 +4,16 @@ feature_extraction.py
 Classical (hand-crafted) feature extraction for
 video-based activity recognition.
 
+This module implements traditional computer vision
+features that transform a variable-length video
+sequence into a fixed-length numerical feature vector,
+making it suitable for classical machine learning
+models such as SVM, Random Forest, and k-NN.
+
 Implemented Feature Categories
 -------------------------------------------------
 1. Color Features
-   - RGB / HSV color histograms per frame
-   - Average color histogram across video
+   - RGB / HSV color histograms
    - Color moments (mean, variance, skewness)
 
 2. Texture Features
@@ -16,26 +21,57 @@ Implemented Feature Categories
    - Local Binary Patterns (LBP)
    - Gabor filter responses
 
-All features convert a variable-length video into
-a fixed-length numerical vector suitable for
-classical machine learning models.
+3. Motion Features
+   - Frame differencing
+   - Motion statistics
+   - Motion intensity histogram
+
+Key Design Principles
+-------------------------------------------------
+- Single-pass video processing
+- Fixed-length output representation
+- No duplicate computation
+- Interpretable features
+- Robust to varying video length
 """
 
-import cv2
-import numpy as np
-from pathlib import Path
-from typing import List
+# =================================================
+# IMPORTS
+# =================================================
 
-from skimage.feature import graycomatrix, graycoprops, local_binary_pattern
+import cv2                          # Video I/O and image processing
+import numpy as np                  # Numerical computation
+from pathlib import Path            # Filesystem handling
+from typing import List             # Type hints
+
+from skimage.feature import (
+    graycomatrix,
+    graycoprops,
+    local_binary_pattern
+)
+
+# =================================================
+# LOGGING UTILITY
+# =================================================
+
+
+def log(message: str) -> None:
+    """
+    Centralized lightweight logger.
+    Keeps output consistent and readable.
+    """
+    print(f"[INFO] {message}", flush=True)
 
 
 # =================================================
-# Helper: Color Moments
+# COLOR FEATURE HELPERS
 # =================================================
 
 def _compute_color_moments(channel: np.ndarray) -> List[float]:
     """
-    Compute color moments for a single channel.
+    Compute statistical color moments for a single channel.
+
+    Moments describe the distribution of pixel intensities.
 
     Returns:
         [mean, variance, skewness]
@@ -44,70 +80,76 @@ def _compute_color_moments(channel: np.ndarray) -> List[float]:
 
     mean = np.mean(channel)
     variance = np.var(channel)
-    std = np.sqrt(variance) + 1e-6
-    skewness = np.mean(((channel - mean) / std) ** 3)
+    std_dev = np.sqrt(variance) + 1e-6
+    skewness = np.mean(((channel - mean) / std_dev) ** 3)
 
     return [mean, variance, skewness]
 
 
 # =================================================
-# Frame-Level Color Features
+# FRAME-LEVEL COLOR FEATURES
 # =================================================
 
-def extract_color_histogram(frame, color_space="HSV", bins=16):
+def extract_color_histogram(
+    frame: np.ndarray,
+    color_space: str = "HSV",
+    bins: int = 16
+) -> np.ndarray:
     """
-    Extract normalized color histogram from one frame.
+    Extract normalized color histogram from a frame.
+
+    Each channel contributes `bins` values.
     """
     if color_space == "RGB":
-        img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        ranges = [0, 256]
-    elif color_space == "HSV":
-        img = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        ranges = [0, 256]
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     else:
-        raise ValueError("color_space must be RGB or HSV")
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     features = []
-    for ch in range(3):
-        hist = cv2.calcHist([img], [ch], None, [bins], ranges)
+
+    for channel_idx in range(3):
+        hist = cv2.calcHist(
+            [image],
+            [channel_idx],
+            None,
+            [bins],
+            [0, 256]
+        )
         hist = cv2.normalize(hist, hist).flatten()
         features.append(hist)
 
     return np.concatenate(features)
 
 
-def extract_color_moments(frame, color_space="HSV"):
+def extract_color_moments(
+    frame: np.ndarray,
+    color_space: str = "HSV"
+) -> np.ndarray:
     """
-    Extract color moments from one frame.
+    Extract color moments (mean, variance, skewness)
+    from each color channel.
     """
     if color_space == "RGB":
-        img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    elif color_space == "HSV":
-        img = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     else:
-        raise ValueError("color_space must be RGB or HSV")
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     moments = []
     for ch in range(3):
-        moments.extend(_compute_color_moments(img[:, :, ch]))
+        moments.extend(_compute_color_moments(image[:, :, ch]))
 
     return np.array(moments)
 
 
 # =================================================
-# Texture Features (Frame-Level)
+# TEXTURE FEATURES (FRAME-LEVEL)
 # =================================================
 
-def extract_glcm_features(gray_frame):
+def extract_glcm_features(gray_frame: np.ndarray) -> np.ndarray:
     """
-    Extract GLCM texture properties.
+    Extract GLCM-based texture descriptors.
 
-    Properties:
-    - Contrast
-    - Dissimilarity
-    - Homogeneity
-    - Energy
-    - Correlation
+    Measures spatial intensity relationships.
     """
     glcm = graycomatrix(
         gray_frame,
@@ -115,26 +157,29 @@ def extract_glcm_features(gray_frame):
         angles=[0],
         levels=256,
         symmetric=True,
-        normed=True,
+        normed=True
     )
 
-    props = [
+    properties = (
         "contrast",
         "dissimilarity",
         "homogeneity",
         "energy",
         "correlation",
-    ]
+    )
 
-    return np.array([graycoprops(glcm, p)[0, 0] for p in props])
+    return np.array([graycoprops(glcm, p)[0, 0] for p in properties])
 
 
-def extract_lbp_features(gray_frame, radius=1, points=8):
+def extract_lbp_features(
+    gray_frame: np.ndarray,
+    radius: int = 1,
+    points: int = 8
+) -> np.ndarray:
     """
-    Extract Local Binary Pattern (LBP) histogram.
+    Extract Local Binary Pattern histogram.
 
-    Uses 'uniform' LBP and returns a normalized histogram.
-    Safely handles floating-point outputs from skimage.
+    Uniform LBP ensures rotation invariance.
     """
     lbp = local_binary_pattern(
         gray_frame,
@@ -143,61 +188,96 @@ def extract_lbp_features(gray_frame, radius=1, points=8):
         method="uniform"
     )
 
-    # Number of bins for uniform LBP
     n_bins = points + 2
-
-    # Convert to integer and clip to valid range
     lbp = np.clip(lbp.astype(np.int32), 0, n_bins - 1)
 
-    hist = np.bincount(
-        lbp.ravel(),
-        minlength=n_bins
-    ).astype(np.float32)
-
-    # Normalize histogram
+    hist = np.bincount(lbp.ravel(), minlength=n_bins).astype(np.float32)
     hist /= (hist.sum() + 1e-6)
 
     return hist
 
 
-def extract_gabor_features(gray_frame):
+def extract_gabor_features(gray_frame: np.ndarray) -> np.ndarray:
     """
-    Extract Gabor filter responses (mean & variance).
+    Extract Gabor filter statistics (mean, variance).
     """
     features = []
-    for theta in [0, np.pi / 4]:
-        for sigma in [1.0, 3.0]:
+
+    for theta in (0, np.pi / 4):
+        for sigma in (1.0, 3.0):
             kernel = cv2.getGaborKernel(
-                (21, 21), sigma, theta, 10.0, 0.5, 0, ktype=cv2.CV_32F
+                ksize=(21, 21),
+                sigma=sigma,
+                theta=theta,
+                lambd=10.0,
+                gamma=0.5,
+                psi=0
             )
-            filtered = cv2.filter2D(gray_frame, cv2.CV_8UC3, kernel)
-            features.append(filtered.mean())
-            features.append(filtered.var())
+            filtered = cv2.filter2D(gray_frame, cv2.CV_32F, kernel)
+            features.extend([filtered.mean(), filtered.var()])
+
     return np.array(features)
 
 
 # =================================================
-# Video-Level Feature Aggregation
+# MOTION FEATURES
+# =================================================
+
+def extract_motion_statistics(diff_frame: np.ndarray) -> np.ndarray:
+    """
+    Compute statistical motion descriptors.
+    """
+    diff_frame = diff_frame.astype(np.float32)
+
+    return np.array([
+        np.mean(diff_frame),
+        np.var(diff_frame),
+        np.max(diff_frame)
+    ])
+
+
+def extract_motion_histogram(
+    diff_frame: np.ndarray,
+    bins: int = 16
+) -> np.ndarray:
+    """
+    Histogram of motion intensity.
+    """
+    hist, _ = np.histogram(diff_frame, bins=bins, range=(0, 256))
+    hist = hist.astype(np.float32)
+    hist /= (hist.sum() + 1e-6)
+
+    return hist
+
+
+# =================================================
+# VIDEO-LEVEL FEATURE AGGREGATION
 # =================================================
 
 def extract_video_features(
-    video_path,
-    color_space="HSV",
-    bins=16,
-    max_frames=None
-):
+    video_path: str,
+    color_space: str = "HSV",
+    bins: int = 16,
+    max_frames: int | None = None
+) -> np.ndarray:
     """
-    Extract combined color + texture features from video.
+    Extract all classical features from a video.
+
+    Features are averaged across frames to ensure
+    fixed-length output.
     """
+    log(f"Opening video: {video_path}")
     cap = cv2.VideoCapture(video_path)
 
-    color_hist_sum = None
-    color_moment_sum = None
-    glcm_sum = None
-    lbp_sum = None
-    gabor_sum = None
+    if not cap.isOpened():
+        raise IOError(f"Cannot open video: {video_path}")
 
-    frame_count = 0
+    color_hist_sum = color_moment_sum = None
+    glcm_sum = lbp_sum = gabor_sum = None
+    motion_stat_sum = motion_hist_sum = None
+
+    prev_gray = None
+    frame_count = motion_count = 0
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -213,6 +293,7 @@ def extract_video_features(
         gabor = extract_gabor_features(gray)
 
         if color_hist_sum is None:
+            log("Initializing feature accumulators")
             color_hist_sum = np.zeros_like(ch)
             color_moment_sum = np.zeros_like(cm)
             glcm_sum = np.zeros_like(glcm)
@@ -224,100 +305,76 @@ def extract_video_features(
         glcm_sum += glcm
         lbp_sum += lbp
         gabor_sum += gabor
-
         frame_count += 1
+
+        if prev_gray is not None:
+            diff = cv2.absdiff(prev_gray, gray)
+            m_stat = extract_motion_statistics(diff)
+            m_hist = extract_motion_histogram(diff)
+
+            if motion_stat_sum is None:
+                motion_stat_sum = np.zeros_like(m_stat)
+                motion_hist_sum = np.zeros_like(m_hist)
+
+            motion_stat_sum += m_stat
+            motion_hist_sum += m_hist
+            motion_count += 1
+
+        prev_gray = gray
+
         if max_frames and frame_count >= max_frames:
+            log(f"Frame limit reached: {max_frames}")
             break
 
     cap.release()
 
     if frame_count == 0:
-        raise RuntimeError(f"No frames read: {video_path}")
+        raise RuntimeError("No frames were read from video")
+
+    log(f"Frames processed: {frame_count}")
+    log(f"Motion frames processed: {motion_count}")
 
     features = np.concatenate([
         color_hist_sum / frame_count,
         color_moment_sum / frame_count,
         glcm_sum / frame_count,
         lbp_sum / frame_count,
-        gabor_sum / frame_count
+        gabor_sum / frame_count,
+        motion_stat_sum / max(motion_count, 1),
+        motion_hist_sum / max(motion_count, 1)
     ])
 
+    log(f"Final feature vector length: {features.shape[0]}")
     return features
 
 
 # =================================================
-# Visualization (Optional)
+# MAIN: SELF-TEST
 # =================================================
 
-def plot_color_histogram_from_features(hist_features,
-                                       bins=16,
-                                       color_space="HSV"):
+def main() -> None:
     """
-    Plot histogram using extracted features only.
+    Standalone verification run.
     """
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("⚠ matplotlib not installed, skipping plot")
-        return
-
-    labels = ["R", "G", "B"] if color_space == "RGB" else ["H", "S", "V"]
-
-    plt.figure(figsize=(8, 4))
-    for i, lbl in enumerate(labels):
-        plt.plot(
-            hist_features[i * bins:(i + 1) * bins],
-            label=lbl
-        )
-
-    plt.title(f"{color_space} Color Histogram")
-    plt.xlabel("Bin")
-    plt.ylabel("Normalized Value")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-
-# =================================================
-# Main (Self-Test)
-# =================================================
-
-def main():
-    """
-    Simple sanity test on dataset structure:
-    dataset/
-      ├── class_1_Basketball
-      ├── class_2_Biking
-      └── class_3_WalkingWithDog
-    """
-    print("🔍 Running feature_extraction self-test")
+    log("Running feature extraction self-test")
 
     root = Path(__file__).resolve().parents[1]
     dataset = root / "dataset"
 
     sample_video = None
-    for cls in dataset.iterdir():
-        if cls.is_dir():
-            vids = list(cls.glob("*.mp4")) + list(cls.glob("*.avi"))
-            if vids:
-                sample_video = vids[0]
+    for cls_dir in dataset.iterdir():
+        if cls_dir.is_dir():
+            videos = list(cls_dir.glob("*.mp4")) + list(cls_dir.glob("*.avi"))
+            if videos:
+                sample_video = videos[0]
                 break
 
     if sample_video is None:
-        print("❌ No video found")
+        log("No sample video found in dataset")
         return
 
-    print(f"🎬 Sample video: {sample_video.name}")
-
-    features = extract_video_features(
-        str(sample_video),
-        color_space="HSV",
-        bins=16,
-        max_frames=30
-    )
-
-    print("✅ Feature extraction successful")
-    print(f"📐 Feature vector length: {features.shape[0]}")
+    extract_video_features(str(sample_video), max_frames=30)
+    log("Self-test completed successfully")
 
 
 if __name__ == "__main__":

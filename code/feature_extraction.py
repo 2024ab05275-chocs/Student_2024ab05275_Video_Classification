@@ -160,7 +160,6 @@ def extract_lbp_features(gray_frame, radius=1, points=8):
     return hist
 
 
-
 def extract_gabor_features(gray_frame):
     """
     Extract Gabor filter responses (mean & variance).
@@ -250,7 +249,9 @@ def extract_video_features(
 # Visualization (Optional)
 # =================================================
 
-def plot_color_histogram_from_features(hist_features, bins=16, color_space="HSV"):
+def plot_color_histogram_from_features(hist_features,
+                                       bins=16,
+                                       color_space="HSV"):
     """
     Plot histogram using extracted features only.
     """

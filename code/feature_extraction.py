@@ -1,17 +1,19 @@
 """
 feature_extraction.py
 -------------------------------------------------
-This file contains classical (hand-crafted) feature
-extraction functions for video-based activity recognition.
+Classical (hand-crafted) feature extraction for
+video-based activity recognition.
 
 Implemented Features:
 1. Color Histograms (RGB / HSV) per frame
 2. Average Color Distribution across the video
 3. Color Moments (Mean, Variance, Skewness)
 
-The extracted features convert a variable-length video
-into a fixed-length numerical feature vector, suitable
-for classical machine learning models.
+Key Design Principles:
+- Single source of truth for feature computation
+- No duplicated histogram logic
+- Visualization uses already-extracted features
+- Suitable for classical ML pipelines
 """
 
 import cv2
@@ -27,9 +29,6 @@ from pathlib import Path
 def _compute_color_moments(channel: np.ndarray) -> List[float]:
     """
     Compute color moments for a single image channel.
-
-    Color moments are statistical descriptors that
-    summarize the intensity distribution of pixels.
 
     Args:
         channel (np.ndarray): Single color channel
@@ -57,7 +56,7 @@ def extract_color_histogram(
     bins: int = 16
 ) -> np.ndarray:
     """
-    Extract a normalized color histogram from a single frame.
+    Extract normalized color histogram from a single frame.
 
     Args:
         frame (np.ndarray): Input frame in BGR format
@@ -65,7 +64,7 @@ def extract_color_histogram(
         bins (int): Number of bins per channel
 
     Returns:
-        np.ndarray: Histogram feature vector
+        np.ndarray: Concatenated histogram feature vector
     """
     if color_space == "RGB":
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -102,7 +101,7 @@ def extract_color_moments(
         color_space (str): 'RGB' or 'HSV'
 
     Returns:
-        np.ndarray: 9-dimensional feature vector
+        np.ndarray: 9-dimensional color moment vector
     """
     if color_space == "RGB":
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -134,7 +133,7 @@ def extract_video_color_features(
     """
     Extract color-based features from an entire video.
 
-    Steps:
+    Pipeline:
     1. Read video frame-by-frame
     2. Extract histogram + color moments per frame
     3. Average features across all frames
@@ -191,33 +190,66 @@ def extract_video_color_features(
 def extract_video_features(video_path, **kwargs):
     """
     Wrapper function used by classical ML pipelines.
-    Internally calls extract_video_color_features.
     """
     return extract_video_color_features(video_path, **kwargs)
 
 
 # =================================================
-# MAIN METHOD (SELF-TEST)
+# Visualization (NO DUPLICATE LOGIC)
+# =================================================
+
+def plot_color_histogram_from_features(
+    hist_features: np.ndarray,
+    bins: int = 16,
+    color_space: str = "HSV"
+):
+    """
+    Plot color histograms using already extracted
+    histogram features.
+
+    This function does NOT recompute histograms.
+
+    Args:
+        hist_features (np.ndarray): Histogram feature vector
+        bins (int): Number of bins per channel
+        color_space (str): 'RGB' or 'HSV'
+    """
+    import matplotlib.pyplot as plt
+
+    channel_names = ["R", "G", "B"] if color_space == "RGB" else ["H", "S", "V"]
+
+    plt.figure(figsize=(8, 4))
+
+    for i, ch in enumerate(channel_names):
+        start = i * bins
+        end = (i + 1) * bins
+        plt.plot(hist_features[start:end], label=ch)
+
+    plt.title(f"{color_space} Color Histogram (Single Frame)")
+    plt.xlabel("Bin Index")
+    plt.ylabel("Normalized Frequency")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+# =================================================
+# MAIN METHOD (SELF-TEST + VISUALIZATION)
 # =================================================
 
 def main():
     """
-    Simple sanity check for feature extraction.
+    Standalone sanity test for feature extraction.
 
-    This method:
-    - Finds one sample video from the dataset
-    - Extracts features
-    - Prints feature dimensions
-
-    This does NOT train any model.
+    - Loads one sample video
+    - Plots color histogram of first frame
+    - Extracts full video features
     """
     print("🔍 Running feature_extraction self-test")
 
-    # Locate dataset directory dynamically
     project_root = Path(__file__).resolve().parents[1]
     dataset_dir = project_root / "dataset"
 
-    # Find first available video
     sample_video = None
     for class_dir in dataset_dir.iterdir():
         if class_dir.is_dir() and class_dir.name.startswith("class_"):
@@ -227,12 +259,34 @@ def main():
                 break
 
     if sample_video is None:
-        print("❌ No sample video found for testing")
+        print("❌ No sample video found")
         return
 
     print(f"🎬 Sample video: {sample_video.name}")
 
-    # Extract features
+    cap = cv2.VideoCapture(str(sample_video))
+    ret, frame = cap.read()
+    cap.release()
+
+    if not ret:
+        print("❌ Failed to read frame")
+        return
+
+    # Extract histogram features (single source of truth)
+    hist_features = extract_color_histogram(
+        frame,
+        color_space="HSV",
+        bins=16
+    )
+
+    # Plot histogram (no recomputation)
+    plot_color_histogram_from_features(
+        hist_features,
+        bins=16,
+        color_space="HSV"
+    )
+
+    # Full video feature extraction
     features = extract_video_features(
         str(sample_video),
         color_space="HSV",
@@ -242,7 +296,7 @@ def main():
 
     print("✅ Feature extraction successful")
     print(f"📐 Feature vector length: {features.shape[0]}")
-    print(f"📊 Feature vector (first 10 values):\n{features[:10]}")
+    print(f"📊 First 10 feature values:\n{features[:10]}")
 
 
 if __name__ == "__main__":

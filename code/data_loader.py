@@ -8,48 +8,64 @@ PART A: DATASET PREPARATION (UCF-101 SUBSET)
 - Cleans dataset directory
 - Filters and validates videos
 - Copies videos into flat class-wise folders
+- Restricts dataset size for classical ML
 - Generates train / val / test splits
 - Writes dataset metadata
 
-PART B: CLASSICAL ML DATA LOADING
+PART B: CLASSICAL ML DATA LOADING + PREPROCESSING
 ------------------------------------------------------------
 - Reads prepared dataset
 - Uses split files (train.txt / val.txt / test.txt)
+- Applies frame-level preprocessing
+- Enforces temporal consistency
 - Extracts classical color features
 - Returns NumPy arrays for ML training
+
+ADDITIONAL VERIFICATION STEP
+------------------------------------------------------------
+- Loads ALL videos from ALL classes after preparation
+- Validates preprocessing and temporal alignment
+- Logs final tensor shapes and label mapping
 
 IMPORTANT:
 - This file is intentionally long but modular
 - Dataset preparation runs ONLY when executed as a script
-- Feature loading functions are used from notebooks
+- Data loading utilities are used when imported
+- ALL preprocessing must happen inside this file
 ============================================================
 """
+
+# ============================================================
+# STANDARD LIBRARIES
+# ============================================================
 
 import shutil
 import random
 from pathlib import Path
+from typing import List, Tuple
+
+# ============================================================
+# THIRD-PARTY LIBRARIES
+# ============================================================
+
 import cv2
 import numpy as np
 
-# Import classical feature extractor
-from feature_extraction import extract_video_color_features
-
 # ============================================================
-# CONFIGURATION SECTION
+# PROJECT IMPORTS
 # ============================================================
 
-# Resolve project root dynamically (one level above /code)
+from feature_extraction import extract_video_features
+
+# ============================================================
+# GLOBAL CONFIGURATION
+# ============================================================
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-# Main dataset directory
 DATASET_DIR = PROJECT_ROOT / "dataset"
 
-# ------------------------------------------------------------
-# SOURCE DATA (DO NOT MODIFY)
-# ------------------------------------------------------------
-
-SOURCE_RAR = DATASET_DIR / "UCF101.rar"
 RAW_UCF_DIR = DATASET_DIR / "UCF-101"
+SOURCE_RAR = DATASET_DIR / "UCF101.rar"
 
 # ------------------------------------------------------------
 # CLASS DEFINITIONS
@@ -58,11 +74,10 @@ RAW_UCF_DIR = DATASET_DIR / "UCF-101"
 CLASSES = {
     "class_1_Basketball": "Basketball",
     "class_2_Biking": "Biking",
-    "class_3_WalkingWithDog": "WalkingWithDog"
+    "class_3_WalkingWithDog": "WalkingWithDog",
 }
 
-# Create class-name → label mapping
-CLASS_TO_LABEL = {cls: idx for idx, cls in enumerate(CLASSES.keys())}
+CLASS_TO_LABEL = {cls: idx for idx, cls in enumerate(CLASSES)}
 LABEL_TO_CLASS = {v: k for k, v in CLASS_TO_LABEL.items()}
 
 # ------------------------------------------------------------
@@ -70,7 +85,7 @@ LABEL_TO_CLASS = {v: k for k, v in CLASS_TO_LABEL.items()}
 # ------------------------------------------------------------
 
 MIN_VIDEOS = 20
-MAX_VIDEOS = 60
+MAX_VIDEOS = 60  # balanced classical ML dataset
 
 # ------------------------------------------------------------
 # VIDEO QUALITY CONSTRAINTS
@@ -90,6 +105,7 @@ SEED = 42
 SPLITS_DIR = DATASET_DIR / "splits"
 
 random.seed(SEED)
+np.random.seed(SEED)
 
 # ============================================================
 # LOGGING UTILITY
@@ -104,10 +120,9 @@ def log(msg):
 # DATASET PREPARATION FUNCTIONS (UNCHANGED)
 # ============================================================
 
-
-def clean_dataset():
-    """Remove generated dataset files while preserving raw data."""
-    log("🧹 Cleaning old dataset (preserving raw files)")
+def clean_dataset() -> None:
+    """Remove generated dataset while preserving raw data."""
+    log("🧹 Cleaning dataset directory")
 
     for item in DATASET_DIR.iterdir():
         if item.name in ["UCF101.rar", "UCF-101"]:
@@ -126,17 +141,17 @@ def create_class_folders():
         (DATASET_DIR / cls).mkdir(parents=True, exist_ok=True)
 
 
-def list_videos(folder: Path):
-    """List all video files in a directory."""
+def list_videos(folder: Path) -> List[Path]:
+    """List all supported video files."""
     videos = []
     for ext in VIDEO_EXTENSIONS:
         videos.extend(folder.glob(f"*{ext.lower()}"))
         videos.extend(folder.glob(f"*{ext.upper()}"))
-    return videos
+    return sorted(videos)
 
 
 def is_video_valid(video: Path) -> bool:
-    """Validate video by duration, resolution, and readability."""
+    """Validate video by readability, duration, and resolution."""
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
         return False
@@ -146,21 +161,22 @@ def is_video_valid(video: Path) -> bool:
     height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
     cap.release()
 
-    if fps <= 0:
+    if fps <= 0 or frames <= 0:
         return False
 
     duration = frames / fps
-    if duration < MIN_DURATION or duration > MAX_DURATION:
+    if not (MIN_DURATION <= duration <= MAX_DURATION):
         return False
+
     if height < MIN_HEIGHT:
         return False
 
     return True
 
 
-def copy_videos():
-    """Copy validated videos from UCF-101 into flat folders."""
-    log("📦 Copying valid videos")
+def copy_videos() -> None:
+    """Copy validated videos into flat class folders."""
+    log("📦 Copying validated videos")
 
     for target_cls, raw_cls in CLASSES.items():
         src_dir = RAW_UCF_DIR / raw_cls
@@ -186,8 +202,8 @@ def copy_videos():
         log(f"✔ {target_cls}: {len(valid)} videos copied")
 
 
-def create_splits():
-    """Create train/val/test split files."""
+def create_splits() -> None:
+    """Create train / val / test split files."""
     train_f = open(SPLITS_DIR / "train.txt", "w")
     val_f = open(SPLITS_DIR / "val.txt", "w")
     test_f = open(SPLITS_DIR / "test.txt", "w")
@@ -214,24 +230,36 @@ def create_splits():
     log("📑 Dataset splits created")
 
 
-def write_metadata():
-    """Write dataset metadata files."""
+def write_metadata() -> None:
+    """Write dataset metadata."""
     (DATASET_DIR / "dataset_info.txt").write_text(
-        "UCF-101 Manual Subset\n"
+        "UCF-101 Classical ML Subset\n"
         f"Classes: {', '.join(CLASSES.keys())}\n"
+        f"Videos per class: {MAX_VIDEOS}\n"
         "Duration: 5–60s | Resolution ≥240p\n"
     )
 
+
 # ============================================================
-# CLASSICAL ML DATA LOADING (NEW SECTION)
+# PART B: CLASSICAL ML DATA LOADING
 # ============================================================
+
+def preprocess_frame(
+    frame: np.ndarray,
+    size: Tuple[int, int] = (224, 224),
+) -> np.ndarray:
+    """Resize, grayscale, normalize frame."""
+    resized = cv2.resize(frame, size)
+    gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+    normalized = gray.astype(np.float32) / 255.0
+    return normalized[..., np.newaxis]
 
 
 def load_split(
     split_name: str,
     color_space: str = "HSV",
     bins: int = 16,
-    max_frames: int = 50
+    max_frames: int = 50,
 ):
     """
     Load a dataset split (train / val / test) and extract features.
@@ -253,28 +281,97 @@ def load_split(
     X, y = [], []
 
     with open(split_file, "r") as f:
-        lines = f.readlines()
+        for line in f:
+            rel_path = line.strip()
+            cls = rel_path.split("/")[0]
+            video_path = DATASET_DIR / rel_path
 
-    for line in lines:
-        rel_path = line.strip()
-        class_name = rel_path.split("/")[0]
-        video_path = DATASET_DIR / rel_path
+            features = extract_video_features(
+                video_path=str(video_path),
+                color_space=color_space,
+                bins=bins,
+                max_frames=max_frames,
+            )
 
-        features = extract_video_color_features(
-            video_path=str(video_path),
-            color_space=color_space,
-            bins=bins,
-            max_frames=max_frames
-        )
-
-        X.append(features)
-        y.append(CLASS_TO_LABEL[class_name])
+            X.append(features)
+            y.append(CLASS_TO_LABEL[cls])
 
     return np.vstack(X), np.array(y)
 
 
 # ============================================================
-# MAIN PIPELINE (DATASET PREPARATION ONLY)
+# DATASET VERIFICATION LOADER (FULL VIDEOS)
+# ============================================================
+
+DEFAULT_FRAME_SIZE = (224, 224)
+DEFAULT_MAX_FRAMES = 50
+
+
+class VideoDataLoader:
+    """
+    Loads full video tensors for verification.
+    """
+
+    def __init__(self, dataset_root, frame_size, max_frames):
+        self.dataset_root = Path(dataset_root)
+        self.frame_size = frame_size
+        self.max_frames = max_frames
+
+    def _load_video(self, path: Path):
+        cap = cv2.VideoCapture(str(path))
+        frames = []
+        if not cap.isOpened():
+            return frames
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frames.append(frame)
+
+        cap.release()
+        return frames
+
+    def _fix_length(self, frames):
+        if not frames:
+            return []
+        if len(frames) >= self.max_frames:
+            idx = np.linspace(0, len(frames) - 1, self.max_frames, dtype=int)
+            return [frames[i] for i in idx]
+        return frames + [frames[-1]] * (self.max_frames - len(frames))
+
+    def load_dataset(self):
+        X, y = [], []
+
+        class_dirs = sorted(
+            d for d in self.dataset_root.iterdir()
+            if d.is_dir() and d.name.startswith("class_")
+        )
+
+        class_to_label = {d.name: i for i, d in enumerate(class_dirs)}
+        label_map = {v: k for k, v in class_to_label.items()}
+
+        for cls_dir in class_dirs:
+            label = class_to_label[cls_dir.name]
+            for video in list_videos(cls_dir):
+                frames = self._load_video(video)
+                frames = self._fix_length(frames)
+                if not frames:
+                    continue
+
+                processed = [
+                    preprocess_frame(f, self.frame_size)
+                    for f in frames
+                ]
+
+                X.append(np.stack(processed))
+                y.append(label)
+
+        return np.array(X), np.array(y), label_map
+
+
+# ============================================================
+# SCRIPT ENTRY POINT (PART A + VERIFICATION)
 # ============================================================
 
 if __name__ == "__main__":
@@ -290,4 +387,22 @@ if __name__ == "__main__":
         write_metadata()
         log("🎉 Dataset preparation complete")
 
-    log("📌 Script finished")
+    # --------------------------------------------------------
+    # VERIFICATION STEP
+    # --------------------------------------------------------
+
+    log("🔍 Verifying prepared dataset")
+
+    loader = VideoDataLoader(
+        dataset_root=str(DATASET_DIR),
+        frame_size=DEFAULT_FRAME_SIZE,
+        max_frames=DEFAULT_MAX_FRAMES,
+    )
+
+    X, y, label_map = loader.load_dataset()
+
+    log(f"📊 Final data shape X: {X.shape}")
+    log(f"📊 Final label shape y: {y.shape}")
+    log(f"🏷 Label map: {label_map}")
+
+    log("📌 data_loader.py execution finished")

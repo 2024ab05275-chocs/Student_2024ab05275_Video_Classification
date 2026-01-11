@@ -1,0 +1,9 @@
+# Mac OS
+
+Step 1: Install unar
+brew install unar
+
+Step 2: unar the file
+unar ./dataset/UCF101.rar
+
+unar -v ./dataset/UCF101.rar

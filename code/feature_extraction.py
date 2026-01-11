@@ -250,7 +250,11 @@ def extract_video_features(
     Extract all classical features including temporal
     statistics from a video.
     """
-    log(f"Opening video: {video_path}")
+    rel_path = Path(video_path)
+    if "dataset" in rel_path.parts:
+        rel_path = Path(*rel_path.parts[rel_path.parts.index("dataset") + 1:])
+
+    log(f"* processing Video file : {rel_path}")
     cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
@@ -293,7 +297,7 @@ def extract_video_features(
         frame_count += 1
 
         if max_frames and frame_count >= max_frames:
-            log(f"Frame limit reached: {max_frames}")
+            #  log(f"Frame limit reached: {max_frames}")
             break
 
     cap.release()
@@ -301,7 +305,7 @@ def extract_video_features(
     if frame_count < 2:
         raise RuntimeError("Insufficient frames for temporal analysis")
 
-    log(f"Frames processed: {frame_count}")
+    #  log(f"Frames processed: {frame_count}")
 
     frame_features = np.vstack(frame_features)
     motion_features = np.vstack(motion_features)
@@ -318,7 +322,7 @@ def extract_video_features(
         motion_stats
     ])
 
-    log(f"Final feature vector length: {final_features.shape[0]}")
+    #  log(f"Final feature vector length: {final_features.shape[0]}")
     return final_features
 
 

@@ -256,7 +256,7 @@ def preprocess_frame(
     return normalized[..., np.newaxis]
 
 
-def load_split_data(
+def load_split_data_and_extract_features(
     split_name: str,
     color_space: str = "HSV",
     bins: int = 16,

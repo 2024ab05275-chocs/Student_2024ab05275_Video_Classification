@@ -11,6 +11,7 @@ Random Forest, k-NN) to ensure:
 • Fair comparison
 • Consistent metrics
 • Reproducible results
+• Deployment-aware evaluation
 """
 
 import logging
@@ -31,10 +32,15 @@ from sklearn.metrics import (
 from sklearn.preprocessing import label_binarize
 from sklearn.metrics import ConfusionMatrixDisplay
 
-# Create a module-level logger
+# --------------------------------------------------
+# Module-level logger
+# --------------------------------------------------
 LOGGER = logging.getLogger(__name__)
 
 
+# ==================================================
+# 🔹 MODEL EVALUATION (PER MODEL)
+# ==================================================
 def evaluate_classification(
     y_true,
     y_pred,
@@ -44,104 +50,64 @@ def evaluate_classification(
     show_tables: bool = True,
 ):
     """
-    Evaluate a multi-class classification model and report
-    metrics in a strictly defined academic order.
+    Evaluate a multi-class classification model
+    using a strictly defined academic order.
 
-    This function computes:
+    Metrics computed:
     1. Accuracy
     2. Precision (per-class + macro)
     3. Recall (per-class + macro)
     4. F1-Score (per-class + macro)
     5. Confusion Matrix
-    6. ROC Curve and AUC (One-vs-Rest)
+    6. ROC Curve & AUC (One-vs-Rest)
 
-    Parameters
-    ----------
-    y_true : array-like
-        Ground truth class labels.
-    y_pred : array-like
-        Predicted class labels.
-    y_scores : array-like, optional
-        Class probability estimates.
-        Required for ROC/AUC computation.
-    class_names : list of str, optional
-        Human-readable class names.
-    plot_roc : bool, default=True
-        If True, plots ROC curves.
-    show_tables : bool, default=True
-        If True, generates tabular summaries.
-
-    Returns
-    -------
-    dict
-        Dictionary containing:
-        • Scalar metrics
-        • Confusion matrix
-        • ROC-AUC values
-        • Tabular DataFrames
+    Returns a dictionary used for:
+    • Reporting
+    • Model comparison
+    • Efficiency analysis
     """
 
     print("Starting model evaluation")
 
-    # Dictionary to store all computed results
     metrics = {}
 
     # ==================================================
     # 1️⃣ Accuracy
     # ==================================================
-    # Accuracy measures overall classification correctness
     accuracy = accuracy_score(y_true, y_pred)
     metrics["accuracy"] = accuracy
-
-    print("Accuracy: %.4f", accuracy)
+    print(f"Accuracy: {accuracy:.4f}")
 
     # ==================================================
-    # 2️⃣ Precision (Per-class + Macro Average)
+    # 2️⃣ Precision (Macro)
     # ==================================================
-    # Precision answers:
-    # "Of all predicted samples for a class, how many were correct?"
     precision_macro = precision_score(
-        y_true,
-        y_pred,
-        average="macro",
-        zero_division=0,
+        y_true, y_pred, average="macro", zero_division=0
     )
     metrics["precision_macro"] = precision_macro
-
-    print("Macro Precision: %.4f", precision_macro)
+    print(f"Macro Precision: {precision_macro:.4f}")
 
     # ==================================================
-    # 3️⃣ Recall (Per-class + Macro Average)
+    # 3️⃣ Recall (Macro)
     # ==================================================
-    # Recall answers:
-    # "Of all actual samples of a class, how many were correctly identified?"
     recall_macro = recall_score(
-        y_true,
-        y_pred,
-        average="macro",
-        zero_division=0,
+        y_true, y_pred, average="macro", zero_division=0
     )
     metrics["recall_macro"] = recall_macro
-
-    print("Macro Recall: %.4f", recall_macro)
+    print(f"Macro Recall: {recall_macro:.4f}")
 
     # ==================================================
-    # 4️⃣ F1-Score (Per-class + Macro Average)
+    # 4️⃣ F1-Score (Macro)
     # ==================================================
-    # F1-score is the harmonic mean of precision and recall
-    # It balances false positives and false negatives
     f1_macro = f1_score(
-        y_true,
-        y_pred,
-        average="macro",
-        zero_division=0,
+        y_true, y_pred, average="macro", zero_division=0
     )
     metrics["f1_macro"] = f1_macro
+    print(f"Macro F1-Score: {f1_macro:.4f}")
 
-    print("Macro F1-Score: %.4f", f1_macro)
-
-    # Generate detailed per-class metrics
-    # Includes precision, recall, f1-score, and support
+    # --------------------------------------------------
+    # Per-class detailed metrics
+    # --------------------------------------------------
     class_report = classification_report(
         y_true,
         y_pred,
@@ -149,42 +115,29 @@ def evaluate_classification(
         zero_division=0,
         output_dict=True,
     )
-
     metrics["classification_report"] = class_report
-
-    # Convert per-class metrics to a DataFrame
-    class_report_df = pd.DataFrame(class_report).T
-    metrics["classification_report_df"] = class_report_df
+    metrics["classification_report_df"] = pd.DataFrame(class_report).T
 
     # ==================================================
     # 5️⃣ Confusion Matrix
     # ==================================================
-    # Confusion matrix shows true vs predicted labels
-    # and helps identify misclassification patterns
     cm = confusion_matrix(y_true, y_pred)
     metrics["confusion_matrix"] = cm
 
-    disp = ConfusionMatrixDisplay(
+    ConfusionMatrixDisplay(
         confusion_matrix=cm,
         display_labels=class_names,
-    )
+    ).plot(cmap="Blues", xticks_rotation=45)
 
-    disp.plot(cmap="Blues", xticks_rotation=45)
     plt.title("Confusion Matrix")
     plt.tight_layout()
     plt.show()
 
     # ==================================================
-    # 6️⃣ ROC Curve and AUC (Multi-class One-vs-Rest)
+    # 6️⃣ ROC Curve & AUC (OvR)
     # ==================================================
-    # ROC curves evaluate model discrimination ability
-    # For multi-class problems, One-vs-Rest strategy is used
     if y_scores is not None and plot_roc:
-        print("Computing ROC Curve and AUC (OvR)")
-
         classes = np.unique(y_true)
-
-        # Convert true labels into binary format
         y_true_bin = label_binarize(y_true, classes=classes)
 
         roc_auc = {}
@@ -192,8 +145,7 @@ def evaluate_classification(
 
         for i, cls in enumerate(classes):
             fpr, tpr, _ = roc_curve(
-                y_true_bin[:, i],
-                y_scores[:, i],
+                y_true_bin[:, i], y_scores[:, i]
             )
             roc_auc[cls] = auc(fpr, tpr)
 
@@ -203,7 +155,6 @@ def evaluate_classification(
                 label=f"{class_names[i]} (AUC={roc_auc[cls]:.2f})",
             )
 
-        # Reference diagonal for random classifier
         plt.plot([0, 1], [0, 1], "k--")
         plt.xlabel("False Positive Rate")
         plt.ylabel("True Positive Rate")
@@ -214,21 +165,18 @@ def evaluate_classification(
         plt.show()
 
         metrics["roc_auc"] = roc_auc
-
-        # Create a ROC-AUC table per class
-        roc_auc_df = pd.DataFrame(
+        metrics["roc_auc_df"] = pd.DataFrame(
             {
                 "Class": class_names,
                 "ROC-AUC": [roc_auc[c] for c in classes],
             }
         )
-        metrics["roc_auc_df"] = roc_auc_df
 
     # ==================================================
-    # 📋 Overall Metrics Table (Report-Ready)
+    # 📋 Overall Metrics Table
     # ==================================================
     if show_tables:
-        overall_metrics_df = pd.DataFrame(
+        metrics["overall_metrics_df"] = pd.DataFrame(
             {
                 "Metric": [
                     "Accuracy",
@@ -244,7 +192,99 @@ def evaluate_classification(
                 ],
             }
         )
-        metrics["overall_metrics_df"] = overall_metrics_df
 
     print("Evaluation completed successfully !!")
     return metrics
+
+
+# ==================================================
+# 🔹 PERFORMANCE + EFFICIENCY COMPARISON
+# ==================================================
+def create_full_comparison_table(model_results: dict):
+    """
+    Create a SINGLE consolidated table containing:
+    • Classification performance
+    • Training time
+    • Inference time per video
+
+    This table is intended for:
+    • Comparative analysis section
+    • Final report tables
+    • Viva justification
+    """
+
+    comparison_df = pd.DataFrame(
+        {
+            "Model": model_results.keys(),
+            "Accuracy": [
+                m["accuracy"] for m in model_results.values()
+            ],
+            "Macro Precision": [
+                m["precision_macro"] for m in model_results.values()
+            ],
+            "Macro Recall": [
+                m["recall_macro"] for m in model_results.values()
+            ],
+            "Macro F1-Score": [
+                m["f1_macro"] for m in model_results.values()
+            ],
+            "Training Time (s)": [
+                m["training_time"] for m in model_results.values()
+            ],
+            "Inference Time / Video (s)": [
+                m["inference_time_per_video"]
+                for m in model_results.values()
+            ],
+        }
+    )
+
+    print("\n📊 PERFORMANCE & COMPUTATIONAL EFFICIENCY COMPARISON")
+    print(comparison_df.round(4))
+
+    return comparison_df
+
+
+# ==================================================
+# 🔹 DYNAMIC OBSERVATIONS (AUTO-GENERATED)
+# ==================================================
+def generate_dynamic_observations(comparison_df: pd.DataFrame):
+    """
+    Generate dynamic, data-driven observations
+    directly from the comparison table.
+    """
+
+    print("\n🧠 DYNAMIC OBSERVATIONS")
+
+    best_accuracy = comparison_df.loc[
+        comparison_df["Accuracy"].idxmax(), "Model"
+    ]
+    print(f"• {best_accuracy} achieves the highest classification accuracy.")
+
+    best_f1 = comparison_df.loc[
+        comparison_df["Macro F1-Score"].idxmax(), "Model"
+    ]
+    print(
+        f"• {best_f1} provides the best balance between precision and recall."
+    )
+
+    fastest_training = comparison_df.loc[
+        comparison_df["Training Time (s)"].idxmin(), "Model"
+    ]
+    print(
+        f"• {fastest_training} has the lowest training time, "
+        "indicating minimal model fitting overhead."
+    )
+
+    fastest_inference = comparison_df.loc[
+        comparison_df["Inference Time / Video (s)"].idxmin(), "Model"
+    ]
+    print(
+        f"• {fastest_inference} achieves the fastest inference per video, "
+        "making it suitable for real-time deployment."
+    )
+
+    if "k-NN" in comparison_df["Model"].values:
+        print(
+            "• k-NN demonstrates very low training cost but higher inference "
+            "latency due to distance-based computations during prediction."
+        )

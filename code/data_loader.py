@@ -39,9 +39,11 @@ IMPORTANT:
 # STANDARD LIBRARIES
 # ============================================================
 
+import math
 import shutil
 import random
 from pathlib import Path
+from datetime import datetime
 from typing import List, Tuple
 
 # ============================================================
@@ -371,6 +373,120 @@ class VideoDataLoader:
         return np.array(X), np.array(y), label_map
 
 
+def compute_dataset_statistics(
+    dataset_root: str,
+    frame_sampling_rate: int = 1,
+    split_ratio: tuple = (0.7, 0.15, 0.15)
+):
+    """
+    Compute dataset statistics directly from dataset directory.
+
+    Args:
+        dataset_root (str): Root directory of dataset
+        frame_sampling_rate (int): Extract 1 frame every N frames
+        split_ratio (tuple): (train, val, test) ratios
+
+    Returns:
+        dict: Dataset statistics
+    """
+    assert sum(split_ratio) == 1.0, "Split ratios must sum to 1.0"
+
+    dataset_root = PROJECT_ROOT / "dataset"
+    class_dirs = [d for d in dataset_root.iterdir() if d.is_dir()]
+
+    num_classes = len(class_dirs)
+    total_videos = 0
+    total_frames = 0
+
+    for class_dir in class_dirs:
+        video_files = (
+            list(class_dir.glob("*.avi")) +
+            list(class_dir.glob("*.mp4")) +
+            list(class_dir.glob("*.mov"))
+        )
+
+        total_videos += len(video_files)
+
+        for video in video_files:
+            cap = cv2.VideoCapture(str(video))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            cap.release()
+
+            total_frames += frame_count // frame_sampling_rate
+
+    train_ratio, val_ratio, test_ratio = split_ratio
+
+    train_videos = math.floor(total_videos * train_ratio)
+    val_videos = math.floor(total_videos * val_ratio)
+    test_videos = total_videos - train_videos - val_videos
+
+    return {
+        "Number of classes": num_classes,
+        "Total videos": total_videos,
+        "Total frames extracted": total_frames,
+        "Train videos": train_videos,
+        "Validation videos": val_videos,
+        "Test videos": test_videos,
+        "Split ratio": f"{int(train_ratio*100)}/"
+                       f"{int(val_ratio*100)}/"
+                       f"{int(test_ratio*100)}"
+    }
+
+
+def create_dataset_info(
+    root_dir: str,
+    dataset_url: str,
+    description: str,
+    stats: dict
+):
+    """
+    Create dataset_info folder structure and populate metadata files.
+
+    Args:
+        root_dir (str): Project root directory
+        dataset_url (str): URL or source of dataset
+        description (str): Markdown description of dataset
+        stats (dict): Dataset statistics (classes, videos, frames, etc.)
+    """
+    
+    info_dir = PROJECT_ROOT / "dataset_info"
+    print(info_dir)
+    samples_dir = info_dir / "sample_frames"
+
+    # Create directories
+    info_dir.mkdir(parents=True, exist_ok=True)
+    samples_dir.mkdir(parents=True, exist_ok=True)
+
+    # dataset_url.txt
+    (info_dir / "dataset_url.txt").write_text(
+        f"{dataset_url}\n\nGenerated on: {datetime.now()}\n",
+        encoding="utf-8"
+    )
+
+    # dataset_description.md
+    (info_dir / "dataset_description.md").write_text(
+        f"# Dataset Description\n\n{description}\n",
+        encoding="utf-8"
+    )
+
+    # data_statistics.txt
+    stats_text = ["Dataset Statistics\n", "-" * 20]
+    for k, v in stats.items():
+        stats_text.append(f"{k}: {v}")
+
+    (info_dir / "data_statistics.txt").write_text(
+        "\n".join(stats_text),
+        encoding="utf-8"
+    )
+
+    print(f"[INFO] dataset_info created at: {info_dir}")
+
+stats = compute_dataset_statistics(
+    dataset_root= "dataset",
+    frame_sampling_rate=5,
+    split_ratio=SPLIT_RATIO
+)
+
 # ============================================================
 # SCRIPT ENTRY POINT (PART A + VERIFICATION)
 # ============================================================
@@ -387,6 +503,18 @@ if __name__ == "__main__":
         create_splits()
         write_metadata()
         log("🎉 Dataset preparation complete")
+
+    # Create Dataset Information
+    create_dataset_info(
+            root_dir=".",
+            dataset_url="https://www.crcv.ucf.edu/data/UCF101.php",
+            description="""
+            Video action recognition dataset.
+            Frames sampled every 5 frames.
+            Split into Train / Validation / Test sets.
+            """,
+            stats=stats
+        )
 
     # --------------------------------------------------------
     # VERIFICATION STEP

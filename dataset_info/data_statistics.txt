@@ -1,0 +1,10 @@
+Dataset Statistics
+
+--------------------
+Number of classes: 4
+Total videos: 152
+Total frames extracted: 7061
+Train videos: 106
+Validation videos: 22
+Test videos: 24
+Split ratio: 70/15/15

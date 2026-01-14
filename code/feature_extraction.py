@@ -68,43 +68,150 @@ def log(message: str) -> None:
 # =================================================
 # COLOR FEATURE HELPERS
 # =================================================
+# This helper function computes color moments that
+# summarize the statistical distribution of pixel
+# intensities within a single image channel.
+#
+# Output:
+#   [mean, variance, skewness]
+# =================================================
+
 
 def _compute_color_moments(channel: np.ndarray) -> List[float]:
     """
-    Compute mean, variance and skewness of a channel.
+    Compute the first three statistical color moments
+    for a single image channel.
+
+    Moments captured:
+      1. Mean      → Average intensity (brightness)
+      2. Variance  → Intensity spread (contrast)
+      3. Skewness  → Distribution asymmetry
+
+    Args:
+        channel (np.ndarray):
+            2D array representing a single color channel
+            (e.g., R, G, or B), values typically in [0, 255]
+
+    Returns:
+        List[float]:
+            [mean, variance, skewness]
     """
+
+    # -------------------------------------------------
+    # Convert to float for numerical stability
+    # -------------------------------------------------
     channel = channel.astype(np.float32)
 
+    # -------------------------------------------------
+    # First moment: Mean
+    # -------------------------------------------------
+    # Represents the average intensity of the channel
     mean = np.mean(channel)
+
+    # -------------------------------------------------
+    # Second moment: Variance
+    # -------------------------------------------------
+    # Measures the spread / contrast of intensities
     variance = np.var(channel)
+
+    # -------------------------------------------------
+    # Standard deviation (used for skewness normalization)
+    # Add epsilon to avoid division by zero
+    # -------------------------------------------------
     std = np.sqrt(variance) + 1e-6
+
+    # -------------------------------------------------
+    # Third moment: Skewness
+    # -------------------------------------------------
+    # Measures asymmetry of the intensity distribution
+    # Positive skew → long right tail
+    # Negative skew → long left tail
     skewness = np.mean(((channel - mean) / std) ** 3)
 
     return [mean, variance, skewness]
 
 
+
 # =================================================
-# FRAME-LEVEL COLOR FEATURES
+# FRAME-LEVEL COLOR FEATURE EXTRACTION
 # =================================================
+# This module extracts color-based appearance features
+# from individual video frames using:
+#   - Color histograms
+#   - Color moments
+#
+# Input:
+#   frame: np.ndarray of shape (H, W, 3), BGR format
+# =================================================
+
+
 
 def extract_color_histogram(
     frame: np.ndarray,
     color_space: str = "HSV",
     bins: int = 16
 ) -> np.ndarray:
-    """Extract normalized color histogram per frame."""
-    image = (
-        cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        if color_space == "RGB"
-        else cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    )
+    """
+    Extract normalized color histograms from a video frame.
+
+    For each color channel:
+      - Compute histogram
+      - Normalize
+      - Concatenate across channels
+
+    Args:
+        frame (np.ndarray):
+            Input image in BGR format (H, W, 3)
+        color_space (str):
+            Target color space: "RGB" or "HSV"
+        bins (int):
+            Number of histogram bins per channel
+
+    Returns:
+        np.ndarray:
+            Concatenated color histogram of shape (3 * bins,)
+    """
+
+    # -------------------------------------------------
+    # Sanity checks
+    # -------------------------------------------------
+    if frame.ndim != 3 or frame.shape[2] != 3:
+        raise ValueError("Expected frame shape (H, W, 3)")
+
+    if color_space not in {"RGB", "HSV"}:
+        raise ValueError("color_space must be 'RGB' or 'HSV'")
+
+    # -------------------------------------------------
+    # Convert from BGR (OpenCV default) to target space
+    # -------------------------------------------------
+    if color_space == "RGB":
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    else:
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     features = []
+
+    # -------------------------------------------------
+    # Compute histogram for each channel
+    # -------------------------------------------------
     for ch in range(3):
-        hist = cv2.calcHist([image], [ch], None, [bins], [0, 256])
+        # Calculate histogram
+        hist = cv2.calcHist(
+            [image],
+            [ch],
+            None,
+            [bins],
+            [0, 256]
+        )
+
+        # Normalize histogram (L2 normalization)
         hist = cv2.normalize(hist, hist).flatten()
+
         features.append(hist)
 
+    # -------------------------------------------------
+    # Concatenate histograms across channels
+    # -------------------------------------------------
     return np.concatenate(features)
 
 
@@ -112,26 +219,98 @@ def extract_color_moments(
     frame: np.ndarray,
     color_space: str = "HSV"
 ) -> np.ndarray:
-    """Extract color moments per frame."""
-    image = (
-        cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        if color_space == "RGB"
-        else cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    )
+    """
+    Extract color moments from a video frame.
+
+    For each channel:
+      - Mean
+      - Variance
+      - Skewness
+
+    Args:
+        frame (np.ndarray):
+            Input image in BGR format (H, W, 3)
+        color_space (str):
+            Target color space: "RGB" or "HSV"
+
+    Returns:
+        np.ndarray:
+            Color moments vector of shape (9,)
+    """
+
+    # -------------------------------------------------
+    # Sanity checks
+    # -------------------------------------------------
+    if frame.ndim != 3 or frame.shape[2] != 3:
+        raise ValueError("Expected frame shape (H, W, 3)")
+
+    if color_space not in {"RGB", "HSV"}:
+        raise ValueError("color_space must be 'RGB' or 'HSV'")
+
+    # -------------------------------------------------
+    # Convert from BGR to target color space
+    # -------------------------------------------------
+    if color_space == "RGB":
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    else:
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     moments = []
+
+    # -------------------------------------------------
+    # Compute color moments per channel
+    # -------------------------------------------------
     for ch in range(3):
-        moments.extend(_compute_color_moments(image[:, :, ch]))
+        moments.extend(
+            _compute_color_moments(image[:, :, ch])
+        )
 
-    return np.array(moments)
+    return np.array(moments, dtype=np.float32)
+
 
 
 # =================================================
-# TEXTURE FEATURES
+# TEXTURE FEATURE EXTRACTION
 # =================================================
+# This module extracts complementary texture descriptors
+# from grayscale images using classical CV techniques:
+#   - GLCM (statistical texture)
+#   - LBP  (local micro-patterns)
+#   - Gabor filters (frequency & orientation)
+#
+# Input convention:
+#   gray: np.ndarray of shape (H, W), dtype uint8
+# =================================================
+
 
 def extract_glcm_features(gray: np.ndarray) -> np.ndarray:
-    """Extract GLCM texture descriptors."""
+    """
+    Extract texture features using Gray-Level Co-occurrence Matrix (GLCM).
+
+    Computes second-order statistics that describe how
+    pixel intensities co-occur in local neighborhoods.
+
+    Args:
+        gray (np.ndarray):
+            Grayscale image of shape (H, W), values in [0, 255]
+
+    Returns:
+        np.ndarray:
+            GLCM feature vector of shape (5,)
+    """
+
+    # -------------------------------------------------
+    # Sanity checks
+    # -------------------------------------------------
+    if gray.ndim != 2:
+        raise ValueError("GLCM requires a 2D grayscale image")
+
+    # -------------------------------------------------
+    # Compute GLCM
+    # distance=1, angle=0° (horizontal neighbors)
+    # symmetric=True → (i, j) == (j, i)
+    # normed=True → probabilities sum to 1
+    # -------------------------------------------------
     glcm = graycomatrix(
         gray,
         distances=[1],
@@ -141,15 +320,27 @@ def extract_glcm_features(gray: np.ndarray) -> np.ndarray:
         normed=True
     )
 
-    props = (
+    # -------------------------------------------------
+    # Texture properties to extract
+    # -------------------------------------------------
+    properties = [
         "contrast",
         "dissimilarity",
         "homogeneity",
         "energy",
-        "correlation",
-    )
+        "correlation"
+    ]
 
-    return np.array([graycoprops(glcm, p)[0, 0] for p in props])
+    # -------------------------------------------------
+    # Extract each property and flatten
+    # Shape from graycoprops: (distances, angles)
+    # -------------------------------------------------
+    features = [
+        graycoprops(glcm, prop)[0, 0]
+        for prop in properties
+    ]
+
+    return np.array(features, dtype=np.float32)
 
 
 def extract_lbp_features(
@@ -157,83 +348,319 @@ def extract_lbp_features(
     radius: int = 1,
     points: int = 8
 ) -> np.ndarray:
-    """Extract uniform LBP histogram."""
-    lbp = local_binary_pattern(gray, points, radius, method="uniform")
+    """
+    Extract texture features using Uniform Local Binary Patterns (LBP).
+
+    LBP encodes local pixel neighborhoods into discrete
+    binary patterns that represent texture primitives.
+
+    Args:
+        gray (np.ndarray):
+            Grayscale image of shape (H, W)
+        radius (int):
+            Radius of neighborhood
+        points (int):
+            Number of sampling points
+
+    Returns:
+        np.ndarray:
+            Normalized LBP histogram of shape (points + 2,)
+    """
+
+    # -------------------------------------------------
+    # Compute uniform LBP codes
+    # -------------------------------------------------
+    lbp = local_binary_pattern(
+        gray,
+        P=points,
+        R=radius,
+        method="uniform"
+    )
+
+    # -------------------------------------------------
+    # Uniform LBP produces (points + 2) distinct labels
+    # -------------------------------------------------
     n_bins = points + 2
 
-    lbp = np.clip(lbp.astype(np.int32), 0, n_bins - 1)
-    hist = np.bincount(lbp.ravel(), minlength=n_bins).astype(np.float32)
+    # Clip values to valid bin range
+    lbp = np.clip(
+        lbp.astype(np.int32),
+        0,
+        n_bins - 1
+    )
+
+    # -------------------------------------------------
+    # Compute normalized histogram
+    # -------------------------------------------------
+    hist = np.bincount(
+        lbp.ravel(),
+        minlength=n_bins
+    ).astype(np.float32)
+
     hist /= (hist.sum() + 1e-6)
 
     return hist
 
 
 def extract_gabor_features(gray: np.ndarray) -> np.ndarray:
-    """Extract Gabor filter mean & variance."""
+    """
+    Extract texture features using Gabor filters.
+
+    Gabor filters capture oriented and frequency-specific
+    texture information similar to the human visual system.
+
+    Returns mean and variance of filter responses.
+
+    Args:
+        gray (np.ndarray):
+            Grayscale image of shape (H, W)
+
+    Returns:
+        np.ndarray:
+            Gabor feature vector of shape (8,)
+    """
+
     features = []
 
-    for theta in (0, np.pi / 4):
-        for sigma in (1.0, 3.0):
+    # -------------------------------------------------
+    # Apply filters at multiple orientations and scales
+    # -------------------------------------------------
+    for theta in (0, np.pi / 4):          # Orientations
+        for sigma in (1.0, 3.0):          # Scales
+
             kernel = cv2.getGaborKernel(
-                (21, 21), sigma, theta, 10.0, 0.5, 0
+                ksize=(21, 21),
+                sigma=sigma,
+                theta=theta,
+                lambd=10.0,
+                gamma=0.5,
+                psi=0
             )
-            filtered = cv2.filter2D(gray, cv2.CV_32F, kernel)
-            features.extend([filtered.mean(), filtered.var()])
 
-    return np.array(features)
+            # Apply Gabor filter
+            filtered = cv2.filter2D(
+                gray,
+                cv2.CV_32F,
+                kernel
+            )
+
+            # Aggregate filter response
+            features.append(filtered.mean())
+            features.append(filtered.var())
+
+    return np.array(features, dtype=np.float32)
+
 
 
 # =================================================
-# MOTION FEATURES
+# MOTION FEATURE EXTRACTION
 # =================================================
+# These functions extract compact motion descriptors
+# from frame-to-frame difference representations.
+#
+# Expected input:
+#   diff: np.ndarray
+#     - Motion intensity values
+#     - Can be 1D or multi-dimensional
+# =================================================
+
+
 
 def extract_motion_statistics(diff: np.ndarray) -> np.ndarray:
-    """Mean, variance and max of motion intensity."""
+    """
+    Compute basic statistical descriptors of motion intensity.
+
+    Captures:
+      - Mean     : Average motion energy
+      - Variance : Motion variability
+      - Max      : Strongest motion event
+
+    Args:
+        diff (np.ndarray):
+            Motion intensity array (frame differences or motion magnitudes)
+
+    Returns:
+        np.ndarray:
+            Motion statistics vector of shape (3,)
+    """
+
+    # -------------------------------------------------
+    # Convert to float for numerical stability
+    # -------------------------------------------------
     diff = diff.astype(np.float32)
-    return np.array([diff.mean(), diff.var(), diff.max()])
+
+    # -------------------------------------------------
+    # Compute statistical motion descriptors
+    # -------------------------------------------------
+    mean_motion = diff.mean()
+    var_motion = diff.var()
+    max_motion = diff.max()
+
+    return np.array([
+        mean_motion,
+        var_motion,
+        max_motion
+    ], dtype=np.float32)
 
 
 def extract_motion_histogram(diff: np.ndarray, bins: int = 16) -> np.ndarray:
-    """Histogram of motion magnitude."""
-    hist, _ = np.histogram(diff, bins=bins, range=(0, 256))
+    """
+    Compute a normalized histogram of motion magnitudes.
+
+    This captures the distribution of motion intensities
+    rather than just aggregate statistics.
+
+    Args:
+        diff (np.ndarray):
+            Motion intensity values (expected range: 0–255)
+        bins (int):
+            Number of histogram bins
+
+    Returns:
+        np.ndarray:
+            Normalized motion histogram of shape (bins,)
+    """
+
+    # -------------------------------------------------
+    # Convert to float for consistency
+    # -------------------------------------------------
+    diff = diff.astype(np.float32)
+
+    # -------------------------------------------------
+    # Compute histogram over motion magnitudes
+    # -------------------------------------------------
+    hist, bin_edges = np.histogram(
+        diff,
+        bins=bins,
+        range=(0, 256)  # Standard range for 8-bit motion
+    )
+
+    # -------------------------------------------------
+    # Normalize histogram to sum to 1
+    # (Add epsilon to avoid division by zero)
+    # -------------------------------------------------
     hist = hist.astype(np.float32)
     hist /= (hist.sum() + 1e-6)
+
     return hist
 
 
+
 # =================================================
-# TEMPORAL FEATURES
+# TEMPORAL FEATURE EXTRACTION
 # =================================================
+# These functions convert a sequence of frame-level
+# features into fixed-length temporal descriptors.
+#
+# Input shape convention:
+#   sequence: (T, D)
+#   T = number of frames
+#   D = feature dimensionality per frame
+# =================================================
+
 
 def extract_temporal_statistics(sequence: np.ndarray) -> np.ndarray:
     """
-    Compute temporal statistics over a feature sequence.
+    Compute statistical temporal descriptors over a feature sequence.
 
-    Captures:
-    - Mean
-    - Standard deviation
-    - Minimum
-    - Maximum
+    This function summarizes how each feature dimension behaves
+    across time by computing:
+      - Mean  : Average activation (presence)
+      - Std   : Temporal variability (motion / instability)
+      - Min   : Lowest observed value
+      - Max   : Highest observed value
+
+    Args:
+        sequence (np.ndarray):
+            Frame-level feature sequence of shape (T, D)
+
+    Returns:
+        np.ndarray:
+            Concatenated statistics vector of shape (4 * D,)
     """
-    return np.concatenate([
-        sequence.mean(axis=0),
-        sequence.std(axis=0),
-        sequence.min(axis=0),
-        sequence.max(axis=0),
+
+    # -------------------------------------------------
+    # Sanity checks
+    # -------------------------------------------------
+    if sequence.ndim != 2:
+        raise ValueError(
+            f"Expected input shape (T, D), got {sequence.shape}"
+        )
+
+    # -------------------------------------------------
+    # Compute temporal statistics per feature dimension
+    # -------------------------------------------------
+    mean_features = sequence.mean(axis=0)
+    std_features = sequence.std(axis=0)
+    min_features = sequence.min(axis=0)
+    max_features = sequence.max(axis=0)
+
+    # -------------------------------------------------
+    # Concatenate all statistics into a single vector
+    # -------------------------------------------------
+    temporal_stats = np.concatenate([
+        mean_features,
+        std_features,
+        min_features,
+        max_features
     ])
+
+    return temporal_stats
 
 
 def extract_temporal_gradients(sequence: np.ndarray) -> np.ndarray:
     """
-    Analyze frame-to-frame variation using first-order
-    temporal gradients.
+    Compute first-order temporal gradient features.
+
+    Temporal gradients capture frame-to-frame changes
+    in the feature space, highlighting motion intensity
+    and dynamic transitions.
+
+    The gradient is computed as:
+        gradient[t] = sequence[t+1] - sequence[t]
+
+    Args:
+        sequence (np.ndarray):
+            Frame-level feature sequence of shape (T, D)
+
+    Returns:
+        np.ndarray:
+            Global gradient statistics of shape (3,)
+            [mean_gradient, std_gradient, max_gradient]
     """
+
+    # -------------------------------------------------
+    # Sanity checks
+    # -------------------------------------------------
+    if sequence.ndim != 2:
+        raise ValueError(
+            f"Expected input shape (T, D), got {sequence.shape}"
+        )
+
+    if sequence.shape[0] < 2:
+        raise ValueError(
+            "At least 2 frames are required to compute gradients"
+        )
+
+    # -------------------------------------------------
+    # Compute frame-to-frame temporal gradients
+    # Shape: (T - 1, D)
+    # -------------------------------------------------
     gradients = np.diff(sequence, axis=0)
+
+    # -------------------------------------------------
+    # Aggregate gradient information globally
+    # -------------------------------------------------
+    mean_gradient = gradients.mean()
+    std_gradient = gradients.std()
+    max_gradient = gradients.max()
+
     return np.array([
-        gradients.mean(),
-        gradients.std(),
-        gradients.max()
+        mean_gradient,
+        std_gradient,
+        max_gradient
     ])
+
 
 
 # =================================================

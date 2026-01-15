@@ -3,137 +3,167 @@
 # Deep Learning Model Architectures for Video Classification
 # ==========================================================
 
+from typing import Optional
 import os
 import torch
 import torch.nn as nn
 from torchvision import models
+from torchvision.models.video import R2Plus1D_18_Weights
+from torchvision.models import ResNet18_Weights
 
+
+# ==========================================================
+# 2D CNN + Temporal Aggregation
+# ==========================================================
 
 class CNN2DTemporal(nn.Module):
     """
     2D CNN with Temporal Feature Aggregation.
 
-    This model:
-    - Extracts frame-level spatial features using ResNet-18
-    - Aggregates features across time using mean + max pooling
-    - Performs video-level classification
-
-    Input:
-        x: Tensor of shape (B, T, C, H, W)
-
-    Output:
-        logits: Tensor of shape (B, num_classes)
+    - ImageNet-pretrained ResNet-18
+    - Temporal mean + max pooling
+    - Dropout + Normalization for regularization
     """
 
     def __init__(
         self,
         num_classes: int,
-        local_weights_path: str | None = None
+        local_weights_path: Optional[str] = None,
+        dropout_p: float = 0.5,
+        norm_type: str = "batch"  # "batch" or "layer"
     ):
         super().__init__()
 
         # --------------------------------------------------
-        # Initialize ResNet-18 backbone (no auto-download)
+        # Load ResNet-18 (ImageNet pretrained)
         # --------------------------------------------------
-        base = models.resnet18(weights=None)
+        base = models.resnet18(
+            weights=ResNet18_Weights.IMAGENET1K_V1
+        )
 
-        # --------------------------------------------------
-        # Load pretrained weights if provided
-        # (Handled silently; logging should be external)
-        # --------------------------------------------------
+        # Optional local weight override
         if local_weights_path and os.path.exists(local_weights_path):
-            state_dict = torch.load(local_weights_path, map_location="cpu")
+            state_dict = torch.load(
+                local_weights_path,
+                map_location="cpu"
+            )
             base.load_state_dict(state_dict)
 
-        # --------------------------------------------------
-        # Remove final classification layer
-        # Resulting output: (B*T, 512, 1, 1)
-        # --------------------------------------------------
+        # Backbone (remove FC)
         self.backbone = nn.Sequential(*list(base.children())[:-1])
+        feat_dim = base.fc.in_features
 
         # --------------------------------------------------
-        # Video-level classifier
+        # Normalization choice
         # --------------------------------------------------
-        self.classifier = nn.Linear(512, num_classes)
+        if norm_type == "batch":
+            self.norm = nn.BatchNorm1d(feat_dim)
+        elif norm_type == "layer":
+            self.norm = nn.LayerNorm(feat_dim)
+        else:
+            raise ValueError("norm_type must be 'batch' or 'layer'")
+
+        # --------------------------------------------------
+        # Classifier with Dropout
+        # --------------------------------------------------
+        self.classifier = nn.Sequential(
+            nn.Dropout(p=dropout_p),
+            nn.Linear(feat_dim, num_classes)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass.
-
         Args:
-            x (torch.Tensor):
-                Input video tensor of shape (B, T, C, H, W)
-
-        Returns:
-            torch.Tensor:
-                Class logits of shape (B, num_classes)
+            x: (B, T, C, H, W)
         """
-
         B, T, C, H, W = x.shape
 
-        # --------------------------------------------------
-        # Merge batch and temporal dimensions
-        # --------------------------------------------------
-        x = x.view(B * T, C, H, W)
+        # Frame-level feature extraction
+        x = x.reshape(B * T, C, H, W)
+        feats = self.backbone(x)              # (B*T, 512, 1, 1)
+        feats = feats.reshape(B, T, -1)       # (B, T, 512)
 
-        # --------------------------------------------------
-        # Extract spatial features per frame
-        # --------------------------------------------------
-        features = self.backbone(x)          # (B*T, 512, 1, 1)
-        features = features.view(B, T, -1)   # (B, T, 512)
-
-        # --------------------------------------------------
         # Temporal aggregation
-        # Mean pooling → global appearance
-        # Max pooling  → salient motion cues
-        # --------------------------------------------------
-        pooled = features.mean(dim=1) + features.max(dim=1)[0]
+        pooled = feats.mean(dim=1) + feats.max(dim=1)[0]
 
-        # --------------------------------------------------
-        # Final classification
-        # --------------------------------------------------
+        # Normalization + classification
+        pooled = self.norm(pooled)
         return self.classifier(pooled)
 
+
+# ==========================================================
+# 3D CNN (R(2+1)D)
+# ==========================================================
 
 class CNN3D(nn.Module):
     """
     3D CNN using R(2+1)D-18 for spatiotemporal modeling.
 
-    This architecture:
-    - Applies 3D convolutions across space and time
-    - Learns motion and appearance jointly
-    - Is computationally heavier but more expressive
+    - Kinetics-400 pretrained
+    - Dropout + normalization
     """
 
-    def __init__(self, num_classes: int):
+    def __init__(
+        self,
+        num_classes: int,
+        pretrained: bool = True,
+        dropout_p: float = 0.5
+    ):
         super().__init__()
 
-        # --------------------------------------------------
-        # Load pretrained 3D CNN backbone
-        # --------------------------------------------------
-        self.model = models.video.r2plus1d_18(pretrained=True)
+        weights = (
+            R2Plus1D_18_Weights.KINETICS400_V1
+            if pretrained else None
+        )
 
-        # --------------------------------------------------
-        # Replace classification head
-        # --------------------------------------------------
-        self.model.fc = nn.Linear(512, num_classes)
+        self.model = models.video.r2plus1d_18(weights=weights)
+
+        feat_dim = self.model.fc.in_features
+
+        # Replace classifier with regularized head
+        self.model.fc = nn.Sequential(
+            nn.BatchNorm1d(feat_dim),
+            nn.Dropout(p=dropout_p),
+            nn.Linear(feat_dim, num_classes)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass.
-
         Args:
-            x (torch.Tensor):
-                Input video tensor of shape (B, T, C, H, W)
-
-        Returns:
-            torch.Tensor:
-                Class logits of shape (B, num_classes)
+            x: (B, T, C, H, W)
         """
-
-        # --------------------------------------------------
-        # Convert to (B, C, T, H, W) for 3D convolutions
-        # --------------------------------------------------
-        x = x.permute(0, 2, 1, 3, 4)
-
+        x = x.permute(0, 2, 1, 3, 4)  # (B, C, T, H, W)
         return self.model(x)
+
+
+# ==========================================================
+# Early Stopping Utility
+# ==========================================================
+
+class EarlyStopping:
+    """
+    Early stopping to terminate training when validation
+    loss stops improving.
+
+    Usage:
+        early_stopper = EarlyStopping(patience=5)
+        stop = early_stopper.step(val_loss)
+    """
+
+    def __init__(self, patience: int = 5, min_delta: float = 0.0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best_loss = float("inf")
+        self.counter = 0
+
+    def step(self, val_loss: float) -> bool:
+        """
+        Returns True if training should stop.
+        """
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.counter = 0
+            return False
+
+        self.counter += 1
+        return self.counter >= self.patience

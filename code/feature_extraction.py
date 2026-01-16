@@ -79,7 +79,9 @@ def log(message: str) -> None:
 # CLASSICAL FEATURE VISUALIZATION SETUP
 # ============================================================
 
-CLASSICAL_VIZ_DIR = "results/feature_visualizations/classical"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+CLASSICAL_VIZ_DIR = PROJECT_ROOT / "results" / "feature_visualizations" / "classical"
 os.makedirs(CLASSICAL_VIZ_DIR, exist_ok=True)
 
 # =================================================

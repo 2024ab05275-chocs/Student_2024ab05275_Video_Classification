@@ -44,16 +44,27 @@ Key Design Principles
 # IMPORTS
 # =================================================
 
+import os
 import cv2
 import numpy as np
 from pathlib import Path
 from typing import List
+import matplotlib.pyplot as plt
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.manifold import TSNE
 
 from skimage.feature import (
     graycomatrix,
     graycoprops,
     local_binary_pattern
 )
+
+try:
+    import umap
+    UMAP_AVAILABLE = True
+except ImportError:
+    UMAP_AVAILABLE = False
 
 # =================================================
 # LOGGING UTILITY
@@ -64,6 +75,12 @@ def log(message: str) -> None:
     """Centralized logging helper."""
     print(f"[INFO] {message}", flush=True)
 
+# ============================================================
+# CLASSICAL FEATURE VISUALIZATION SETUP
+# ============================================================
+
+CLASSICAL_VIZ_DIR = "results/feature_visualizations/classical"
+os.makedirs(CLASSICAL_VIZ_DIR, exist_ok=True)
 
 # =================================================
 # COLOR FEATURE HELPERS
@@ -751,6 +768,187 @@ def extract_video_features(
 
     #  log(f"Final feature vector length: {final_features.shape[0]}")
     return final_features
+
+# ============================================================
+# CLASSICAL FEATURE IMPORTANCE
+# ============================================================
+
+def visualize_classical_feature_importance(
+    model,
+    feature_names,
+    top_k=20,
+    save_name="feature_importance.png"
+):
+    """
+    Visualizes feature importance for classical ML models.
+
+    Supports:
+    - Tree-based models (Random Forest, Gradient Boosting)
+    - Linear models (SVM, Logistic Regression)
+
+    Args:
+        model: trained classical ML model
+        feature_names (list): names of handcrafted features
+        top_k (int): number of top features to plot
+        save_name (str): output image filename
+    """
+
+    # Extract importance scores
+    if hasattr(model, "feature_importances_"):
+        importance = model.feature_importances_
+    elif hasattr(model, "coef_"):
+        importance = np.abs(model.coef_).mean(axis=0)
+    else:
+        raise ValueError("Model does not support feature importance")
+
+    # Sort features by importance
+    indices = np.argsort(importance)[::-1][:top_k]
+
+    plt.figure(figsize=(10, 6))
+    plt.barh(
+        range(top_k),
+        importance[indices][::-1]
+    )
+    plt.yticks(
+        range(top_k),
+        np.array(feature_names)[indices][::-1]
+    )
+    plt.xlabel("Importance Score")
+    plt.title("Top Classical Feature Importances")
+    plt.tight_layout()
+
+    save_path = os.path.join(CLASSICAL_VIZ_DIR, save_name)
+    plt.savefig(save_path)
+    plt.close()
+
+    print(f"[Saved] Feature importance → {save_path}")
+
+# ============================================================
+# CLASSICAL FEATURE SPACE VISUALIZATION
+# ============================================================
+
+def visualize_classical_feature_space(
+    features,
+    labels,
+    method="tsne",
+    save_name="tsne.png"
+):
+    """
+    Visualizes classical feature space using t-SNE or UMAP.
+
+    Args:
+        features (np.ndarray): shape (N, D)
+        labels (np.ndarray): class labels
+        method (str): 'tsne' or 'umap'
+        save_name (str): output image filename
+    """
+
+    # Standardize features before dimensionality reduction
+    features = StandardScaler().fit_transform(features)
+
+    if method == "tsne":
+        reducer = TSNE(
+            n_components=2,
+            perplexity=30,
+            random_state=42
+        )
+    elif method == "umap":
+        if not UMAP_AVAILABLE:
+            raise ImportError("Install umap-learn to use UMAP")
+        reducer = umap.UMAP(
+            n_components=2,
+            random_state=42
+        )
+    else:
+        raise ValueError("method must be 'tsne' or 'umap'")
+
+    embedding = reducer.fit_transform(features)
+
+    plt.figure(figsize=(8, 6))
+    scatter = plt.scatter(
+        embedding[:, 0],
+        embedding[:, 1],
+        c=labels,
+        cmap="tab10",
+        s=12
+    )
+    plt.colorbar(scatter)
+    plt.title(f"{method.upper()} Visualization of Classical Features")
+    plt.tight_layout()
+
+    save_path = os.path.join(CLASSICAL_VIZ_DIR, save_name)
+    plt.savefig(save_path)
+    plt.close()
+
+    print(f"[Saved] {method.upper()} plot → {save_path}")
+
+# =================================================
+# FEATURE NAMES HELPER
+# =================================================
+
+def get_classical_feature_names(
+    hist_bins: int = 16,
+    lbp_points: int = 8,
+    include_motion: bool = True
+) -> list[str]:
+    """
+    Generate feature names that exactly match the final
+    concatenated video-level feature vector.
+    """
+
+    names = []
+
+    # -----------------------
+    # Per-frame raw features
+    # -----------------------
+    frame_feats = []
+
+    # Color histogram (3 channels × bins)
+    for ch in ("C1", "C2", "C3"):
+        for b in range(hist_bins):
+            frame_feats.append(f"{ch}_hist_bin{b}")
+
+    # Color moments (3 channels × 3 moments)
+    moments = ("mean", "var", "skew")
+    for ch in ("C1", "C2", "C3"):
+        for m in moments:
+            frame_feats.append(f"{ch}_{m}")
+
+    # Texture features
+    glcm_props = ["contrast", "dissimilarity", "homogeneity", "energy", "correlation"]
+    frame_feats.extend([f"glcm_{p}" for p in glcm_props])
+    
+    lbp_bins = lbp_points + 2
+    frame_feats.extend([f"lbp_bin{b}" for b in range(lbp_bins)])
+    
+    gabor_feats = 8
+    frame_feats.extend([f"gabor_f{i}" for i in range(gabor_feats)])
+
+    # -----------------------
+    # Temporal stats over frame features
+    # -----------------------
+    for stat in ("mean", "std", "min", "max"):
+        names.extend([f"{f}_{stat}" for f in frame_feats])
+
+    # -----------------------
+    # Temporal gradients (global 3)
+    # -----------------------
+    names.extend(["grad_mean", "grad_std", "grad_max"])
+
+    # -----------------------
+    # Motion features (if available)
+    # -----------------------
+    if include_motion:
+        motion_feats = ["motion_mean", "motion_var", "motion_max"]
+        motion_hist = [f"motion_hist_bin{i}" for i in range(hist_bins)]
+        motion_frame_feats = motion_feats + motion_hist
+
+        # Temporal aggregation over motion features
+        for stat in ("mean", "std", "min", "max"):
+            names.extend([f"{f}_{stat}" for f in motion_frame_feats])
+
+    return names
+
 
 
 # =================================================

@@ -1,20 +1,116 @@
-# Core
+# ==========================================================
+# requirements.txt
+# ----------------------------------------------------------
+# Python dependencies for
+# Video-based Activity Recognition (Classical + Deep Learning)
+#
+# This project implements:
+#  - Classical hand-crafted feature extraction
+#  - Classical ML models (SVM, Random Forest, k-NN)
+#  - Deep learning models (2D CNN + Temporal Pooling, 3D CNN)
+#  - Feature visualization and performance analysis
+#
+# Compatible with Python 3.9+
+# ==========================================================
+
+
+# ==========================================================
+# CORE NUMERICAL COMPUTATION
+# ==========================================================
+# Fundamental numerical operations, array manipulation,
+# statistics, and linear algebra used throughout the project
+# (feature extraction, model inputs, evaluation metrics).
 numpy>=1.23
+
+# Advanced scientific computing utilities:
+#  - Signal processing
+#  - Statistical functions
+#  - Numerical optimization
+# Used indirectly by scikit-learn and scikit-image.
+
 scipy>=1.10
 
-# PyTorch
+
+# ==========================================================
+# DEEP LEARNING FRAMEWORK (PyTorch)
+# ==========================================================
+# Core deep learning framework used for:
+#  - 2D CNN with temporal pooling
+#  - 3D CNN (R(2+1)D-style architecture)
+#  - Model training, inference, and evaluation
+
 torch>=2.0
+
+# Computer vision utilities for PyTorch:
+#  - Pretrained ResNet backbones
+#  - Image transformations
+#  - Dataset and data loader helpers
+
 torchvision>=0.15
 
-# Data handling
+
+# ==========================================================
+# DATA HANDLING & CLASSICAL COMPUTER VISION
+# ==========================================================
+# OpenCV (headless version):
+#  - Video decoding (.mp4, .avi)
+#  - Frame extraction
+#  - Color space conversion (BGR ↔ RGB/HSV)
+#  - Gabor filtering and motion computation
+#
+# Headless version avoids GUI dependencies and is
+# suitable for servers, Docker, and cloud environments.
 opencv-python-headless
+
+# Classical machine learning library used for:
+#  - SVM, Random Forest, k-NN
+#  - Feature scaling (StandardScaler)
+#  - Model evaluation and metrics
+#  - t-SNE feature space visualization
+
 scikit-learn>=1.3
+
+# Image processing and texture analysis utilities:
+#  - GLCM (Gray-Level Co-occurrence Matrix)
+#  - Local Binary Patterns (LBP)
+#  - Texture feature computation
+
 scikit-image
 
-# Visualization
+
+# ==========================================================
+# VISUALIZATION & ANALYSIS
+# ==========================================================
+# Core plotting library used for:
+#  - Loss curves
+#  - Accuracy plots
+#  - Confusion matrices
+#  - Feature importance visualization
+
 matplotlib>=3.7
+
+# High-level visualization library built on matplotlib:
+#  - Cleaner plots
+#  - Confusion matrix heatmaps
+#  - Statistical visualization (optional)
+
 seaborn>=0.13
+
+# UMAP (Uniform Manifold Approximation and Projection):
+#  - Non-linear dimensionality reduction
+#  - Visualization of high-dimensional classical feature space
+#  - Optional alternative to t-SNE
+
 umap-learn
 
-# Utilities
+
+# ==========================================================
+# UTILITIES
+# ==========================================================
+# Progress bar utility used during:
+#  - Video processing
+#  - Feature extraction
+#  - Model training loops
+# Improves usability and experiment tracking.
+
 tqdm>=4.66

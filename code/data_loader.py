@@ -126,18 +126,26 @@ def log(msg):
 
 
 def clean_dataset() -> None:
-    """Remove generated dataset while preserving raw data."""
-    log("🧹 Cleaning dataset directory")
+    """
+    Remove only class folders inside DATASET_DIR while preserving:
+      - UCF101.rar
+      - UCF-101 raw folder
+      - splits folder
+      - any other files (metadata, logs, etc.)
 
+    This ensures re-running the dataset preparation does not delete important files.
+    """
+    log("🧹 Cleaning class folders in dataset directory")
+
+    # Only remove folders whose name starts with "class_"
     for item in DATASET_DIR.iterdir():
-        if item.name in ["UCF101.rar", "UCF-101"]:
-            continue
-        if item.is_dir():
+        if item.is_dir() and item.name.startswith("class_"):
             shutil.rmtree(item)
-        else:
-            item.unlink()
+            log(f"🗑 Deleted folder: {item.name}")
 
+    # Ensure splits directory exists
     SPLITS_DIR.mkdir(parents=True, exist_ok=True)
+
 
 
 def create_class_folders():
@@ -179,35 +187,105 @@ def is_video_valid(video: Path) -> bool:
     return True
 
 
-def copy_videos() -> None:
-    """Copy validated videos into flat class folders."""
-    log("📦 Copying validated videos")
+# ============================================================
+# UPDATED copy_videos FUNCTION WITH DETAILED COMMENTS
+# ============================================================
 
-    for target_cls, raw_cls in CLASSES.items():
+HUMAN_ACTION_KEYWORDS = [
+    "Walking", "Jogging", "Running", "Jumping", "Handstand", "PushUps",
+    "JumpRope", "HandWaving", "Clapping", "Diving", "Skipping", "Swing",
+    "Yoga", "GolfSwing", "Skateboarding", "Surfing", "Cartwheel"
+]
+
+def copy_videos() -> dict:
+    """
+    Copy validated videos from UCF-101 raw dataset into flat class-wise folders.
+    Rules:
+      - Only human-action classes (walking, running, jumping, etc.)
+      - Only classes with at least MAX_VIDEOS valid videos
+      - Copy exactly MAX_VIDEOS videos per class
+      - Stop after selecting 5 classes
+      - Never create empty folders
+      - Avoid duplicate classes
+    """
+
+    global CLASSES, CLASS_TO_LABEL, LABEL_TO_CLASS
+
+    log("📦 Copying validated human-action videos")
+
+    selected_classes = {}
+    class_counter = 1  # Sequential numbering for folders
+    used_raw_classes = set()
+
+    # List all raw classes
+    all_raw_classes = sorted([d.name for d in RAW_UCF_DIR.iterdir() if d.is_dir()])
+
+    def is_human_action_class(raw_cls_name: str) -> bool:
+        """Check if class matches human-action keywords."""
+        for kw in HUMAN_ACTION_KEYWORDS:
+            if kw.lower() in raw_cls_name.lower():
+                return True
+        return False
+
+    for raw_cls in all_raw_classes:
+
+        # Stop if already 5 classes selected
+        if len(selected_classes) >= 5:
+            break
+
+        # Skip non-human-action classes
+        if not is_human_action_class(raw_cls):
+            continue
+
+        # Skip duplicates
+        if raw_cls in used_raw_classes:
+            continue
+
         src_dir = RAW_UCF_DIR / raw_cls
-        dst_dir = DATASET_DIR / target_cls
-
         if not src_dir.exists():
             log(f"⚠️ Missing raw folder: {raw_cls}")
             continue
 
+        # Validate videos
         videos = list_videos(src_dir)
         random.shuffle(videos)
+        valid_videos = [v for v in videos if is_video_valid(v)]
 
-        valid = []
-        for v in videos:
-            if is_video_valid(v):
-                valid.append(v)
-            if len(valid) >= MAX_VIDEOS:
-                break
+        # Skip if not enough videos
+        if len(valid_videos) < MAX_VIDEOS:
+            log(f"⚠️ Skipping {raw_cls}: only {len(valid_videos)} valid videos (needs {MAX_VIDEOS})")
+            continue
 
-        if len(valid) < MIN_VIDEOS:
-            raise RuntimeError(f"{raw_cls} has only {len(valid)} valid videos")
+        # Take exactly MAX_VIDEOS
+        valid_videos = valid_videos[:MAX_VIDEOS]
 
-        for v in valid:
+        # Folder name after confirming videos exist
+        target_cls = f"class_{class_counter}_{raw_cls}"
+        dst_dir = DATASET_DIR / target_cls
+        dst_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy videos
+        for v in valid_videos:
             shutil.copy2(v, dst_dir / v.name)
 
-        log(f"✔ {target_cls}: {len(valid)} videos copied")
+        # Track selected
+        selected_classes[target_cls] = raw_cls
+        used_raw_classes.add(raw_cls)
+        log(f"✔ {target_cls}: {len(valid_videos)} videos copied")
+
+        class_counter += 1
+
+    # Final check
+    if len(selected_classes) < 5:
+        log(f"⚠️ Only {len(selected_classes)} valid human-action classes could be selected")
+
+    # Update globals
+    CLASSES = selected_classes
+    CLASS_TO_LABEL = {cls: idx for idx, cls in enumerate(CLASSES)}
+    LABEL_TO_CLASS = {v: k for k, v in CLASS_TO_LABEL.items()}
+
+    log(f"📌 Final selected classes: {list(CLASSES.keys())}")
+    return selected_classes
 
 
 def create_splits() -> None:
@@ -247,7 +325,23 @@ def write_metadata() -> None:
         "Duration: 5–60s | Resolution ≥240p\n"
     )
 
-
+def remove_empty_class_folders() -> None:
+    """
+    Delete any class_* folder in DATASET_DIR that has zero video files.
+    
+    - Iterates through all folders starting with 'class_'
+    - Counts videos with supported extensions
+    - Deletes folder if count is zero
+    - Logs all actions
+    """
+    log("🧹 Removing empty class folders if any")
+    for cls_folder in DATASET_DIR.iterdir():
+        if cls_folder.is_dir() and cls_folder.name.startswith("class_"):
+            video_count = len(list_videos(cls_folder))
+            if video_count == 0:
+                shutil.rmtree(cls_folder)
+                log(f"🗑 Deleted empty folder: {cls_folder.name}")
+                
 # ============================================================
 # PART B: CLASSICAL ML DATA LOADING
 # ============================================================
@@ -272,27 +366,54 @@ def load_split_data_and_extract_features(
     """
     Load a dataset split (train / val / test) and extract features.
 
-    Args:
-        split_name (str): One of {'train', 'val', 'test'}
-        color_space (str): Color space for feature extraction
-        bins (int): Histogram bins per channel
-        max_frames (int): Frames per video
-
     Returns:
         X (np.ndarray): Feature matrix
         y (np.ndarray): Label vector
+        CLASS_TO_LABEL (dict)
+        LABEL_TO_CLASS (dict)
     """
+
     split_file = SPLITS_DIR / f"{split_name}.txt"
     if not split_file.exists():
         raise FileNotFoundError(f"Split file not found: {split_file}")
 
     X, y = [], []
 
+    # --------------------------------------------------
+    # 1️⃣ Dynamically detect classes (SORTED = stable labels)
+    # --------------------------------------------------
+    class_dirs = sorted(
+        f.name
+        for f in DATASET_DIR.iterdir()
+        if f.is_dir() and f.name.startswith("class_")
+    )
+
+    if not class_dirs:
+        raise RuntimeError("❌ No class_* folders found in dataset")
+
+    CLASSES = {cls: cls.split("_", 1)[-1] for cls in class_dirs}
+    CLASS_TO_LABEL = {cls: idx for idx, cls in enumerate(class_dirs)}
+    LABEL_TO_CLASS = {idx: cls for cls, idx in CLASS_TO_LABEL.items()}
+
+    log(f"📌 Detected classes ({len(CLASSES)}): {class_dirs}")
+
+    # --------------------------------------------------
+    # 2️⃣ Process split file
+    # --------------------------------------------------
     with open(split_file, "r") as f:
         for line in f:
             rel_path = line.strip()
+            if not rel_path:
+                continue
+
             cls = rel_path.split("/")[0]
             video_path = DATASET_DIR / rel_path
+
+            # Safety check
+            if cls not in CLASS_TO_LABEL:
+                raise KeyError(
+                    f"Class '{cls}' in split file not found in dataset folders"
+                )
 
             features = extract_video_features(
                 video_path=str(video_path),
@@ -304,7 +425,25 @@ def load_split_data_and_extract_features(
             X.append(features)
             y.append(CLASS_TO_LABEL[cls])
 
-    return np.vstack(X), np.array(y)
+    # --------------------------------------------------
+    # 3️⃣ Handle empty splits safely
+    # --------------------------------------------------
+    if len(X) == 0:
+        log(f"⚠️ Split '{split_name}' contains 0 videos")
+        return (
+            np.empty((0, 0)),
+            np.array([]),
+            CLASS_TO_LABEL,
+            LABEL_TO_CLASS,
+        )
+
+    return (
+        np.vstack(X),
+        np.array(y),
+        CLASS_TO_LABEL,
+        LABEL_TO_CLASS,
+    )
+
 
 
 # ============================================================
@@ -493,20 +632,142 @@ stats = compute_dataset_statistics(
     split_ratio=SPLIT_RATIO
 )
 
+def show_split_summary(split_dir: Path = SPLITS_DIR) -> None:
+    """
+    Reads train / val / test split files and prints a tabular summary.
+    
+    Displays:
+        - File name
+        - Class name
+        - Number of videos per class per split
+        - Percentage of total split
+    """
+    from collections import defaultdict
+
+    split_files = {
+        "Train": split_dir / "train.txt",
+        "Validation": split_dir / "val.txt",
+        "Test": split_dir / "test.txt"
+    }
+
+    log("📊 Dataset Split Summary\n")
+
+    for split_name, split_file in split_files.items():
+        if not split_file.exists():
+            log(f"⚠️ Split file not found: {split_file}")
+            continue
+
+        class_counts = defaultdict(int)
+        total_videos = 0
+
+        with open(split_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                cls = line.split("/")[0]
+                class_counts[cls] += 1
+                total_videos += 1
+
+        # Print header
+        print(f"{split_name} Split ({total_videos} videos)")
+        print(f"{'Class Name':25} | {'#Videos':7} | {'Percentage':10}")
+        print("-" * 50)
+
+        # Print class-wise counts
+        for cls, count in sorted(class_counts.items()):
+            pct = (count / total_videos) * 100 if total_videos > 0 else 0
+            print(f"{cls:25} | {count:7} | {pct:9.2f}%")
+
+        print("-" * 50 + "\n")
+
+
+
+def generate_classes_from_folders(dataset_dir: Path = DATASET_DIR) -> dict:
+    """
+    Dynamically generate the CLASSES dictionary from existing class_* folders.
+    
+    Args:
+        dataset_dir (Path): Path to the dataset directory.
+
+    Returns:
+        dict: Ordered dictionary mapping target class folder names to raw class names.
+              Example: {'class_1_WalkingWithDog': 'WalkingWithDog', ...}
+    """
+    from collections import OrderedDict
+
+    # Find all folders starting with 'class_'
+    class_folders = sorted(
+        f for f in dataset_dir.iterdir()
+        if f.is_dir() and f.name.startswith("class_")
+    )
+
+    classes_dict = OrderedDict()
+
+    # Iterate through folders and check if they contain any video files
+    idx = 1
+    for folder in class_folders:
+        video_files = list_videos(folder)
+        if not video_files:
+            # Skip empty folders
+            continue
+        target_cls_name = f"class_{idx}_{folder.name.split('_', 1)[-1]}"
+        classes_dict[target_cls_name] = folder.name.split('_', 1)[-1]
+        idx += 1
+
+    return classes_dict
+
+# 4️⃣ Read splits and create tabular summary
+def summarize_splits():
+    """Read split files and summarize counts and percentages per class."""
+    for split_name in ["train", "val", "test"]:
+        split_file = SPLITS_DIR / f"{split_name}.txt"
+        if not split_file.exists():
+            log(f"⚠️ Split file not found: {split_file}")
+            continue
+
+        class_counts = {cls: 0 for cls in CLASSES}
+        total_videos = 0
+
+        with open(split_file, "r") as f:
+            for line in f:
+                cls = line.strip().split("/")[0]
+                if cls in class_counts:
+                    class_counts[cls] += 1
+                    total_videos += 1
+
+        print(f"\n{split_name.capitalize()} Split ({total_videos} videos)")
+        print("Class Name                | #Videos | Percentage")
+        print("--------------------------------------------------")
+        for cls, count in class_counts.items():
+            percent = (count / total_videos * 100) if total_videos > 0 else 0
+            print(f"{cls:<25} | {count:>6} | {percent:>6.2f}%")
+        print("--------------------------------------------------")
+        
 # ============================================================
 # SCRIPT ENTRY POINT (PART A + VERIFICATION)
 # ============================================================
 
 if __name__ == "__main__":
     log("🚀 Preparing UCF-101 dataset")
-
     if all((DATASET_DIR / cls).exists() for cls in CLASSES):
         log("✅ Dataset already prepared. Skipping.")
+        selected_classes = {cls: CLASSES[cls] for cls in CLASSES if (DATASET_DIR / cls).exists()}
     else:
         clean_dataset()
         create_class_folders()
-        copy_videos()
+        selected_classes = copy_videos()
+        remove_empty_class_folders()
+
+        # 2️⃣ Dynamically generate CLASSES based on actual folders
+        CLASSES = {f.name: f.name.split("_", 1)[-1] for f in DATASET_DIR.iterdir() if f.is_dir() and f.name.startswith("class_")}
+        CLASS_TO_LABEL = {cls: idx for idx, cls in enumerate(CLASSES)}
+        LABEL_TO_CLASS = {v: k for k, v in CLASS_TO_LABEL.items()}
+        log(f"📌 Detected classes: {list(CLASSES.keys())}")
+        
+        # 3️⃣ Re-create train/val/test splits
         create_splits()
+        summarize_splits()
         write_metadata()
         log("🎉 Dataset preparation complete")
 
@@ -541,3 +802,23 @@ if __name__ == "__main__":
     log(f"🏷 Label map: {label_map}")
 
     log("📌 data_loader.py execution finished")
+
+    # --------------------------------------------------------
+    # DATASET SUMMARY TABLE
+    # --------------------------------------------------------
+    
+    log("📊 Dataset Summary (Class | #Videos)")
+    
+    # Header
+    print(f"{'Class Name':<25} | {'#Videos':>7}")
+    print("-" * 36)
+    
+    for cls_dir in sorted(DATASET_DIR.iterdir()):
+        if cls_dir.is_dir() and cls_dir.name.startswith("class_"):
+            video_count = len(list_videos(cls_dir))
+            print(f"{cls_dir.name:<25} | {video_count:>7}")
+    
+    print("-" * 36)
+    log("✅ Dataset summary complete")
+
+    show_split_summary()

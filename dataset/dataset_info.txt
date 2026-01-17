@@ -1,24 +1,4 @@
-UCF-101 Manual Subset
-----------------------
-
-* Classes: class_1_Basketball, class_2_Biking, class_3_WalkingWithDog
-
-* Number of classes: 3
-
-* Videos per class: 20–60
-
-* Video formats: MP4 / AVI / MOV
-
-* Duration: 5–60 seconds
-
-* Resolution: ≥240p
-
-* Train / Validation / Test split: 70% / 15% / 15%
-
-* Label type: Single-label
-
-* Classification type: Multi-class classification (≤5 classes)
-
-* Dataset source: Publicly available UCF-101 action recognition dataset
-
-* Data validation: Duration, resolution, frame rate, and file integrity checks applied
+UCF-101 Classical ML Subset
+Classes: class_1_Diving, class_3_SkyDiving, class_4_Surfing, class_5_Swing, class_2_JumpRope
+Videos per class: 80
+Duration: 5–60s | Resolution ≥240p

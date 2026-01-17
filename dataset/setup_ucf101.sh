@@ -43,7 +43,7 @@ set -e
 PROJECT_ROOT="$(pwd)"
 
 # Dataset directory expected by data_loader.py
-DATASET_DIR="$PROJECT_ROOT/dataset"
+DATASET_DIR="$PROJECT_ROOT"
 
 # Location where the downloaded .rar file will be stored
 RAR_FILE="$DATASET_DIR/UCF101.rar"
@@ -75,68 +75,64 @@ mkdir -p "$DATASET_DIR"
 
 # Check whether the dataset archive already exists.
 # If it does, downloading again is unnecessary and wasteful.
+
+echo "$RAR_FILE"
+
 if [ -f "$RAR_FILE" ]; then
     echo "✔ UCF101.rar already exists — skipping download"
 else
     echo "⬇ Downloading UCF101.rar (~6.5 GB)"
     echo "⏳ Real-time download progress will be shown below"
 
-    # Prefer wget if available (common in Git Bash / WSL)
+    # Use wget if available
     if command -v wget >/dev/null 2>&1; then
+        wget --progress=bar \
+             --no-check-certificate \
+             -O "$RAR_FILE" "$UCF_URL"
 
-        # --progress=bar:
-        #   Displays a clean progress bar with percentage, speed, and ETA
-        wget --progress=bar -O "$RAR_FILE" "$UCF_URL"
-
-    # Fallback to curl if wget is not installed
+    # Fallback to curl
     elif command -v curl >/dev/null 2>&1; then
+        curl -L -k "$UCF_URL" -o "$RAR_FILE"
 
-        # -L:
-        #   Follows HTTP redirects (required for some servers)
-        # curl shows a progress bar by default
-        curl -L "$UCF_URL" -o "$RAR_FILE"
-
-    # If neither tool is available, exit with a clear message
     else
-        echo "❌ Neither wget nor curl found on system"
-        echo "👉 Install Git Bash, WSL, or curl to proceed"
+        echo "❌ Neither wget nor curl found"
         exit 1
     fi
 
-    echo "✔ Download completed successfully"
+    echo "✔ Download completed"
 fi
 
 
 # ------------------------------------------------------------
 # STEP 3: EXTRACT DATASET (ONLY IF NOT ALREADY EXTRACTED)
 # ------------------------------------------------------------
-
-# Check whether the extracted dataset directory already exists.
-# If it does, extraction is skipped to prevent overwriting files.
 if [ -d "$EXTRACT_DIR" ]; then
     echo "✔ Dataset already extracted — skipping extraction"
 else
     echo "📦 Extracting UCF101.rar..."
 
-    # Prefer unrar (installed with WinRAR or unrar package)
+    # Check for unrar or 7z
     if command -v unrar >/dev/null 2>&1; then
-
-        # x:
-        #   Extract with full directory structure
         unrar x "$RAR_FILE" "$DATASET_DIR"
-
-    # Fallback to 7z (7-Zip)
     elif command -v 7z >/dev/null 2>&1; then
-
-        # -o:
-        #   Specifies output directory
         7z x "$RAR_FILE" -o"$DATASET_DIR"
-
-    # If no extraction tool is available, exit cleanly
     else
-        echo "❌ Neither unrar nor 7z found on system"
-        echo "👉 Install WinRAR or 7-Zip to extract .rar files"
-        exit 1
+        # Auto-install extraction tools on Linux (apt-based)
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            echo "⚡ Installing 'unrar' and 'p7zip-full' automatically..."
+            sudo apt update
+            sudo apt install -y unrar p7zip-full
+            echo "✔ Extraction tools installed, retrying extraction..."
+            if command -v unrar >/dev/null 2>&1; then
+                unrar x "$RAR_FILE" "$DATASET_DIR"
+            elif command -v 7z >/dev/null 2>&1; then
+                7z x "$RAR_FILE" -o"$DATASET_DIR"
+            fi
+        else
+            echo "❌ Neither unrar nor 7z found on system"
+            echo "👉 Please install WinRAR or 7-Zip manually"
+            exit 1
+        fi
     fi
 
     echo "✔ Extraction completed successfully"

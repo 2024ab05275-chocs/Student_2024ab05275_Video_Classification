@@ -70,13 +70,15 @@ RAW_UCF_DIR = DATASET_DIR / "UCF-101"
 SOURCE_RAR = DATASET_DIR / "UCF101.rar"
 
 # ------------------------------------------------------------
-# CLASS DEFINITIONS
+# CLASS DEFINITIONS (UPDATED: 5 CLASSES, ≥50 VIDEOS)
 # ------------------------------------------------------------
 
 CLASSES = {
-    "class_1_Basketball": "Basketball",
-    "class_2_Biking": "Biking",
-    "class_3_WalkingWithDog": "WalkingWithDog",
+    "class_1_WalkingWithDog": "WalkingWithDog",
+    "class_2_Running": "Running",
+    "class_3_JumpRope": "JumpRope",
+    "class_4_HandWaving": "HandWaving",
+    "class_5_Basketball": "Basketball",
 }
 
 CLASS_TO_LABEL = {cls: idx for idx, cls in enumerate(CLASSES)}
@@ -86,8 +88,8 @@ LABEL_TO_CLASS = {v: k for k, v in CLASS_TO_LABEL.items()}
 # DATASET SIZE CONSTRAINTS
 # ------------------------------------------------------------
 
-MIN_VIDEOS = 20
-MAX_VIDEOS = 60  # balanced classical ML dataset
+MIN_VIDEOS = 50
+MAX_VIDEOS = 80   # balanced classical ML dataset
 
 # ------------------------------------------------------------
 # VIDEO QUALITY CONSTRAINTS
@@ -119,7 +121,7 @@ def log(msg):
     print(msg, flush=True)
 
 # ============================================================
-# DATASET PREPARATION FUNCTIONS (UNCHANGED)
+# DATASET PREPARATION FUNCTIONS
 # ============================================================
 
 
@@ -198,6 +200,9 @@ def copy_videos() -> None:
                 valid.append(v)
             if len(valid) >= MAX_VIDEOS:
                 break
+
+        if len(valid) < MIN_VIDEOS:
+            raise RuntimeError(f"{raw_cls} has only {len(valid)} valid videos")
 
         for v in valid:
             shutil.copy2(v, dst_dir / v.name)
@@ -481,8 +486,9 @@ def create_dataset_info(
 
     print(f"[INFO] dataset_info created at: {info_dir}")
 
+
 stats = compute_dataset_statistics(
-    dataset_root= "dataset",
+    dataset_root="dataset",
     frame_sampling_rate=5,
     split_ratio=SPLIT_RATIO
 )

@@ -48,6 +48,12 @@ torch>=2.0
 
 torchvision>=0.15
 
+# -----------------------------
+# Excel export
+# -----------------------------
+openpyxl>=3.1.0        
+# Required by pandas to save .xlsx reports (comparative performance)
+
 
 # ==========================================================
 # DATA HANDLING & CLASSICAL COMPUTER VISION

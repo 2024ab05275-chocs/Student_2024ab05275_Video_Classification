@@ -76,7 +76,7 @@ def evaluate_classification(
     # ==================================================
     accuracy = accuracy_score(y_true, y_pred)
     metrics["accuracy"] = accuracy
-    print(f"Accuracy: {accuracy:.4f}")
+    # print(f"Accuracy: {accuracy:.4f}")
 
     # ==================================================
     # 2️⃣ Precision (Macro)
@@ -85,7 +85,7 @@ def evaluate_classification(
         y_true, y_pred, average="macro", zero_division=0
     )
     metrics["precision_macro"] = precision_macro
-    print(f"Macro Precision: {precision_macro:.4f}")
+    # print(f"Macro Precision: {precision_macro:.4f}")
 
     # ==================================================
     # 3️⃣ Recall (Macro)
@@ -94,7 +94,7 @@ def evaluate_classification(
         y_true, y_pred, average="macro", zero_division=0
     )
     metrics["recall_macro"] = recall_macro
-    print(f"Macro Recall: {recall_macro:.4f}")
+    # print(f"Macro Recall: {recall_macro:.4f}")
 
     # ==================================================
     # 4️⃣ F1-Score (Macro)
@@ -103,7 +103,21 @@ def evaluate_classification(
         y_true, y_pred, average="macro", zero_division=0
     )
     metrics["f1_macro"] = f1_macro
-    print(f"Macro F1-Score: {f1_macro:.4f}")
+    # print(f"Macro F1-Score: {f1_macro:.4f}")
+
+    # Create a DataFrame
+    overall_metrics_df = pd.DataFrame({
+        "Metric": ["Accuracy", "Macro Precision", "Macro Recall", "Macro F1-Score"],
+        "Value": [
+            round(accuracy, 4),
+            round(precision_macro, 4),
+            round(recall_macro, 4),
+            round(f1_macro, 4)
+        ]
+    })
+    
+    # Display as a table
+    display(overall_metrics_df)
 
     # --------------------------------------------------
     # Per-class detailed metrics
@@ -117,6 +131,10 @@ def evaluate_classification(
     )
     metrics["classification_report"] = class_report
     metrics["classification_report_df"] = pd.DataFrame(class_report).T
+
+    # Display per-class classification report
+    print("\n📊 Per-Class Classification Report")
+    display(metrics["classification_report_df"])
 
     # ==================================================
     # 5️⃣ Confusion Matrix

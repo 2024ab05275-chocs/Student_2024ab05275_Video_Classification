@@ -819,11 +819,14 @@ def visualize_classical_feature_importance(
     plt.title("Top Classical Feature Importances")
     plt.tight_layout()
 
+    # Save the figure
     save_path = os.path.join(CLASSICAL_VIZ_DIR, save_name)
     plt.savefig(save_path)
-    plt.close()
-
     print(f"[Saved] Feature importance → {save_path}")
+
+    # Always show the figure
+    plt.show()
+
 
 # ============================================================
 # CLASSICAL FEATURE SPACE VISUALIZATION
@@ -880,9 +883,10 @@ def visualize_classical_feature_space(
 
     save_path = os.path.join(CLASSICAL_VIZ_DIR, save_name)
     plt.savefig(save_path)
-    plt.close()
-
     print(f"[Saved] {method.upper()} plot → {save_path}")
+
+    # Always show the figure
+    plt.show()
 
 # =================================================
 # FEATURE NAMES HELPER

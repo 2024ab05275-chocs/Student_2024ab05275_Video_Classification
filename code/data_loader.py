@@ -395,7 +395,7 @@ def load_split_data_and_extract_features(
     CLASS_TO_LABEL = {cls: idx for idx, cls in enumerate(class_dirs)}
     LABEL_TO_CLASS = {idx: cls for cls, idx in CLASS_TO_LABEL.items()}
 
-    log(f"📌 Detected classes ({len(CLASSES)}): {class_dirs}")
+    log(f"📌 Detected classes ({len(CLASSES)}): {class_dirs}\n")
 
     # --------------------------------------------------
     # 2️⃣ Process split file

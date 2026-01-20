@@ -1,0 +1,90 @@
+# Jupyter Notebook to PDF — Docker One-File Instructions
+
+######################################################################
+################# STEPS TO DO IN LOCAL ENVIRONMENT ###################
+######################################################################
+
+## Step 1 — Build Docker Image
+
+Run from project root:
+
+```
+docker build -t ipynb-pdf .
+```
+
+(First time takes ~3–5 minutes)
+
+---
+
+## Step 2 — Convert ALL Notebooks to PDF
+
+```
+docker run --rm \
+  -v "$(pwd)":/home/jovyan/work \
+  ipynb-pdf \
+  bash /home/jovyan/work/code/ipynb_to_pdf.sh /home/jovyan/work/code 
+```
+######################################################################
+OUTPUT
+######################################################################
+
+(.venv) (base) chocalingamlakshmanan@Chocalingams-MacBook-Air Student_2024ab05275_Video_Classification % docker run --rm \
+  -v "$(pwd)":/home/jovyan/work \
+  ipynb-pdf \
+  bash /home/jovyan/work/code/ipynb_to_pdf.sh /home/jovyan/work/code 
+📁 Root directory: /home/jovyan/work/code
+--------------------------------------------
+🔍 Checking dependencies...
+✅ All dependencies available
+--------------------------------------------
+📘 Found 3 notebooks
+--------------------------------------------
+
+📘 Converting: /home/jovyan/work/code/part_b_deep_learning.ipynb
+[NbConvertApp] WARNING | Config option `run_bibtex` not recognized by `PDFExporter`.
+[NbConvertApp] Converting notebook /home/jovyan/work/code/part_b_deep_learning.ipynb to pdf
+[NbConvertApp] Support files will be in part_b_deep_learning_files/
+[NbConvertApp] Making directory ./part_b_deep_learning_files
+[NbConvertApp] Writing 196267 bytes to notebook.tex
+[NbConvertApp] Building PDF
+[NbConvertApp] Running xelatex 3 times: ['xelatex', 'notebook.tex', '-quiet']
+[NbConvertApp] Running bibtex 1 time: ['bibtex', 'notebook']
+[NbConvertApp] WARNING | bibtex had problems, most likely because there were no citations
+[NbConvertApp] PDF successfully created
+[NbConvertApp] Writing 246049 bytes to /home/jovyan/work/code/part_b_deep_learning.pdf
+✅ PDF generated: /home/jovyan/work/code/part_b_deep_learning.pdf
+
+📘 Converting: /home/jovyan/work/code/part_a_classical.ipynb
+[NbConvertApp] WARNING | Config option `run_bibtex` not recognized by `PDFExporter`.
+[NbConvertApp] Converting notebook /home/jovyan/work/code/part_a_classical.ipynb to pdf
+[NbConvertApp] Support files will be in part_a_classical_files/
+[NbConvertApp] Making directory ./part_a_classical_files
+[NbConvertApp] Writing 202002 bytes to notebook.tex
+[NbConvertApp] Building PDF
+[NbConvertApp] Running xelatex 3 times: ['xelatex', 'notebook.tex', '-quiet']
+[NbConvertApp] Running bibtex 1 time: ['bibtex', 'notebook']
+[NbConvertApp] WARNING | bibtex had problems, most likely because there were no citations
+[NbConvertApp] PDF successfully created
+[NbConvertApp] Writing 848584 bytes to /home/jovyan/work/code/part_a_classical.pdf
+✅ PDF generated: /home/jovyan/work/code/part_a_classical.pdf
+
+📘 Converting: /home/jovyan/work/code/comparative_analysis.ipynb
+[NbConvertApp] WARNING | Config option `run_bibtex` not recognized by `PDFExporter`.
+[NbConvertApp] Converting notebook /home/jovyan/work/code/comparative_analysis.ipynb to pdf
+[NbConvertApp] Support files will be in comparative_analysis_files/
+[NbConvertApp] Making directory ./comparative_analysis_files
+[NbConvertApp] Writing 57153 bytes to notebook.tex
+[NbConvertApp] Building PDF
+[NbConvertApp] Running xelatex 3 times: ['xelatex', 'notebook.tex', '-quiet']
+[NbConvertApp] Running bibtex 1 time: ['bibtex', 'notebook']
+[NbConvertApp] WARNING | bibtex had problems, most likely because there were no citations
+[NbConvertApp] PDF successfully created
+[NbConvertApp] Writing 139466 bytes to /home/jovyan/work/code/comparative_analysis.pdf
+✅ PDF generated: /home/jovyan/work/code/comparative_analysis.pdf
+
+============================================
+📊 CONVERSION SUMMARY
+============================================
+✅ Successful: 3
+❌ Failed:     0
+============================================

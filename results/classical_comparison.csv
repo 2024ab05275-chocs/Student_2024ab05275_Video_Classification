@@ -1,4 +1,4 @@
-Model,Accuracy,Macro Precision,Macro Recall,Macro F1-Score,Macro ROC-AUC,Accuracy Rank,Macro Precision Rank,Macro Recall Rank,Macro F1-Score Rank,Macro ROC-AUC Rank
-SVM,0.916667,0.92028,0.916667,0.915731,0.984722,3,3,3,3,3
-Random Forest,0.933333,0.934382,0.933333,0.932551,0.994965,1,1,1,2,1
-k-NN,0.933333,0.9331,0.933333,0.93258,0.99375,1,2,1,1,2
+Model,Accuracy,Precision (Macro),Recall (Macro),F1-score (Macro),Training Time (s),Inference Time / Sample (s),Accuracy Rank,Precision (Macro) Rank,Recall (Macro) Rank,F1-score (Macro) Rank,Training Time (s) Rank,Inference Time / Sample (s) Rank
+SVM,0.916667,0.92028,0.916667,0.915731,1.575157,2.8e-05,3,3,3,3,2,1
+Random Forest,0.933333,0.934382,0.933333,0.932551,6.796045,0.000784,1,1,1,2,3,3
+k-NN,0.933333,0.9331,0.933333,0.93258,0.093874,8.1e-05,1,2,1,1,1,2

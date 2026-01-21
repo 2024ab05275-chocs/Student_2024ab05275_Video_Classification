@@ -1,3 +1,3 @@
-Model,Accuracy,Precision (Macro),Recall (Macro),F1-score (Macro),Training Time (s),Inference Time / Sample (s),Accuracy Rank,Precision (Macro) Rank,Recall (Macro) Rank,F1-score (Macro) Rank,Training Time (s) Rank,Inference Time / Sample (s) Rank
-2D CNN + Temporal Pooling,1.0,1.0,1.0,1.0,43.812458515167236,0.011505063374837239,1,1,1,1,1,1
-3D CNN (R(2+1)D),1.0,1.0,1.0,1.0,200.35504293441772,0.01880632241566976,1,1,1,1,2,2
+Model,Accuracy,Precision (Macro),Recall (Macro),F1-score (Macro),Training Time (s),Inference Time / Sample (s),Model Parameters,Memory Usage (MB),Accuracy Rank,Precision (Macro) Rank,Recall (Macro) Rank,F1-score (Macro) Rank,Model Parameters Rank,Training Time (s) Rank,Inference Time / Sample (s) Rank,Memory Usage (MB) Rank
+2D CNN + Temporal Pooling,1.0,1.0,1.0,1.0,37.30415439605713,0.011544418334960938,11180101,42.7305908203125,1,1,1,1,2,1,1,1
+3D CNN (R(2+1)D),1.0,1.0,1.0,1.0,183.75803756713867,0.024882328510284425,31303714,119.5918083190918,1,1,1,1,1,2,2,2

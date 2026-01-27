@@ -246,8 +246,84 @@ def evaluate_classification(
         )
 
         LOGGER.info(f"ROC curve saved → {roc_save_path}")
-
+    
     print("✅ Evaluation completed successfully\n")
+
+    # ==================================================
+    # 📝 DYNAMIC COMMENTS / INTERPRETATION SECTION
+    # ==================================================
+    comments = []
+
+    total_samples = len(y_true)
+    num_classes = len(np.unique(y_true))
+
+    # Dataset balance check
+    supports = class_report_df.loc[
+        class_report_df.index.difference(["accuracy", "macro avg", "weighted avg"]),
+        "support"
+    ]
+
+    is_balanced = supports.nunique() == 1
+
+    # Strongest / weakest classes
+    per_class_only = class_report_df.loc[
+        class_report_df.index.difference(["accuracy", "macro avg", "weighted avg"])
+    ]
+
+    strongest_class = per_class_only["f1-score"].idxmax()
+    weakest_class = per_class_only["recall"].idxmin()
+
+    # Error concentration
+    low_recall_classes = per_class_only[
+        per_class_only["recall"] < recall_macro
+    ].index.tolist()
+
+    # ---- Generate comments ----
+    comments.append(
+        f"The {model_name} model achieves an overall accuracy of {accuracy:.2%}, "
+        "indicating strong classification performance across video categories."
+    )
+
+    comments.append(
+        "Macro-averaged precision, recall, and F1-score are closely aligned, "
+        "suggesting balanced predictive behavior across classes."
+    )
+
+    if is_balanced:
+        comments.append(
+            "The similarity between macro and weighted averages confirms a balanced dataset "
+            "with uniform class representation."
+        )
+    else:
+        comments.append(
+            "Differences between macro and weighted averages indicate class imbalance "
+            "in the evaluation dataset."
+        )
+
+    comments.append(
+        f"The highest class-wise performance is observed for '{strongest_class}', "
+        f"while most misclassifications occur in '{weakest_class}'."
+    )
+
+    if len(low_recall_classes) <= 2:
+        comments.append(
+            "Classification errors are localized to a small number of classes, "
+            "indicating good overall generalization."
+        )
+    else:
+        comments.append(
+            "Errors are distributed across multiple classes, suggesting scope for "
+            "improving feature discrimination."
+        )
+
+    # Store comments
+    metrics["comments"] = comments
+
+    if show_tables:
+        print("\n📝 Model Performance Interpretation")
+        for c in comments:
+            print("•", c)
+
     return metrics
 
 
@@ -344,3 +420,5 @@ def generate_dynamic_observations(comparison_df: pd.DataFrame):
             "• k-NN shows minimal training cost but higher inference latency "
             "due to distance-based computations."
         )
+
+
